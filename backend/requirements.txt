@@ -1,0 +1,27 @@
+# =============================================
+# GS-Prep Backend Dependencies
+# Compatible with Python 3.10+
+# =============================================
+
+# --- Web Framework ---
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# --- Data Validation & Settings ---
+pydantic==2.11.7
+pydantic-settings==2.9.1
+
+# --- Image & Video Processing ---
+opencv-python-headless==4.11.0.86
+numpy==2.2.6
+Pillow==11.2.1
+ffmpeg-python==0.2.0
+
+# --- Image Analysis ---
+imagehash==4.3.2
+scikit-image==0.25.2
+
+# --- Report Generation ---
+reportlab==4.4.0
+pandas==2.2.3

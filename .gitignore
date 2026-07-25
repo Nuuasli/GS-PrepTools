@@ -1,41 +1,56 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# =============================================
+# GS-Prep Monorepo .gitignore
+# =============================================
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# ----- Frontend (Next.js) -----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
 
-# testing
-/coverage
+# ----- Backend (Python) -----
+backend/.venv/
+backend/__pycache__/
+backend/app/**/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
 
-# next.js
-/.next/
-/out/
+# ----- Storage (working files) -----
+backend/storage/uploads/*
+backend/storage/jobs/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/jobs/.gitkeep
 
-# production
-/build
+# ----- Environment -----
+.env
+.env.*
+!.env.example
 
-# misc
+# ----- IDE / OS -----
 .DS_Store
-*.pem
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
 
-# debug
+# ----- Debug -----
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
+# ----- Misc -----
+*.pem
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+#ignore
+cara_penggunaan.txt
