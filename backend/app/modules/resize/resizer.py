@@ -52,7 +52,7 @@ class ImageResizer:
         """
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        frames: List[Path] = sorted(self.frames_dir.glob("IMG_*.jpg"))
+        frames: List[Path] = sorted(self.frames_dir.glob("*.jpg"))
         total = len(frames)
         final_width = 0
         final_height = 0

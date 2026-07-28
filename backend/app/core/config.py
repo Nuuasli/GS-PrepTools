@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Processing Defaults
     default_extraction_fps: int = 2
     default_jpeg_quality: int = 95
-    default_blur_threshold: float = 100.0
+    default_blur_threshold: float = 80.0
     default_duplicate_threshold: float = 0.85
     default_resize_width: int = 1920
 

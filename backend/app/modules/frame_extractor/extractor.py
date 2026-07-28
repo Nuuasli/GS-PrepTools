@@ -89,7 +89,7 @@ class FrameExtractor:
 
             if frame_index % frame_interval == 0:
                 extracted_count += 1
-                filename = f"IMG_{extracted_count:06d}.jpg"
+                filename = f"{extracted_count:05d}.jpg"
                 output_path = self.output_dir / filename
                 cv2.imwrite(str(output_path), frame, encode_params)
 

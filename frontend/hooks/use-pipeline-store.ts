@@ -56,7 +56,7 @@ interface PipelineState {
 const DEFAULT_CONFIG: ProcessingConfig = {
   extraction_fps: 2,
   jpeg_quality: 95,
-  blur_threshold: 100,
+  blur_threshold: 80,
   duplicate_threshold: 0.85,
   resize_width: 1920,
   duplicate_method: "orb" as DuplicateMethod,

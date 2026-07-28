@@ -70,7 +70,7 @@ class BlurDetector:
         """
         self.blur_dir.mkdir(parents=True, exist_ok=True)
 
-        frames: List[Path] = sorted(self.frames_dir.glob("IMG_*.jpg"))
+        frames: List[Path] = sorted(self.frames_dir.glob("*.jpg"))
         total = len(frames)
         blur_count = 0
 

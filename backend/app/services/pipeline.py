@@ -246,7 +246,7 @@ class PipelineService:
                     total=tot,
                 )
             )
-            remaining_after_blur = len(list(frames_dir.glob("IMG_*.jpg")))
+            remaining_after_blur = len(list(frames_dir.glob("*.jpg")))
             job.update_step(
                 PipelineStep.BLUR,
                 status=StepStatus.COMPLETED,
@@ -273,7 +273,7 @@ class PipelineService:
                     total=tot,
                 )
             )
-            remaining_after_dup = len(list(frames_dir.glob("IMG_*.jpg")))
+            remaining_after_dup = len(list(frames_dir.glob("*.jpg")))
             job.update_step(
                 PipelineStep.DUPLICATE,
                 status=StepStatus.COMPLETED,
@@ -311,7 +311,7 @@ class PipelineService:
             job.update_step(PipelineStep.REPORT, status=StepStatus.RUNNING, message="Generating report...")
 
             processing_time = time.time() - start_time
-            final_images = len(list(processed_dir.glob("IMG_*.jpg")))
+            final_images = len(list(processed_dir.glob("*.jpg")))
 
             report_gen = ReportGenerator(output_path=report_path)
             report_gen.generate(
@@ -342,7 +342,7 @@ class PipelineService:
             # Create zip archive of processed dataset
             zip_path = job.job_dir / f"{job.video_folder_name}_dataset.zip"
             with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
-                for img_file in sorted(processed_dir.glob("IMG_*.jpg")):
+                for img_file in sorted(processed_dir.glob("*.jpg")):
                     zf.write(str(img_file), arcname=f"{job.video_folder_name}/{img_file.name}")
 
             job.update_step(
@@ -354,7 +354,7 @@ class PipelineService:
 
             # Get preview images (first 8)
             preview_images = [
-                f.name for f in sorted(processed_dir.glob("IMG_*.jpg"))[:8]
+                f.name for f in sorted(processed_dir.glob("*.jpg"))[:8]
             ]
 
             # Store final result

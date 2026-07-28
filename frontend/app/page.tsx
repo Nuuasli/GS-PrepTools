@@ -26,6 +26,8 @@ import { RESIZE_OPTIONS } from "@/types";
 export default function HomePage() {
   const router = useRouter();
   const {
+    jobId,
+    videoMetadata,
     videoFile,
     config,
     isProcessing,
@@ -40,6 +42,44 @@ export default function HomePage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const uploadFileInstantly = async (file: File) => {
+    setIsUploading(true);
+    // @ts-expect-error Reset metadata safely
+    setVideoMetadata(null);
+    setVideoFile(file);
+    setError(null);
+    setUploadProgress(0);
+    
+    try {
+      updateStepProgress("upload" as never, {
+        status: "running" as never,
+        message: "Uploading video...",
+      });
+
+      const response = await uploadVideo(file, (progress) => {
+        setUploadProgress(progress);
+        updateStepProgress("upload" as never, { progress });
+      });
+
+      setJobId(response.job_id);
+      setVideoMetadata(response.video_metadata);
+      updateStepProgress("upload" as never, {
+        status: "completed" as never,
+        progress: 100,
+        message: "Upload complete",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+      updateStepProgress("upload" as never, {
+        status: "failed" as never,
+        message: "Upload failed",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // --- Drag & Drop ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -57,63 +97,36 @@ export default function HomePage() {
       setIsDragging(false);
       const file = e.dataTransfer.files[0];
       if (file && file.type.startsWith("video/")) {
-        setVideoFile(file);
-        setError(null);
+        uploadFileInstantly(file);
       } else {
         setError("Please upload a valid video file.");
       }
     },
-    [setVideoFile]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        setVideoFile(file);
-        setError(null);
+        uploadFileInstantly(file);
       }
     },
-    [setVideoFile]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
   // --- Process ---
   const handleProcess = async () => {
-    if (!videoFile) return;
+    if (!videoFile || !jobId) {
+      setError("Please wait for the upload to complete before processing.");
+      return;
+    }
 
     setProcessing(true);
     setError(null);
-
-    try {
-      // Upload
-      updateStepProgress("upload" as never, {
-        status: "running" as never,
-        message: "Uploading video...",
-      });
-
-      const response = await uploadVideo(videoFile, (progress) => {
-        setUploadProgress(progress);
-        updateStepProgress("upload" as never, { progress });
-      });
-
-      setJobId(response.job_id);
-      setVideoMetadata(response.video_metadata);
-      updateStepProgress("upload" as never, {
-        status: "completed" as never,
-        progress: 100,
-        message: "Upload complete",
-      });
-
-      // Navigate to processing page
-      router.push("/processing");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-      setProcessing(false);
-      updateStepProgress("upload" as never, {
-        status: "failed" as never,
-        message: "Upload failed",
-      });
-    }
+    router.push("/processing");
   };
 
   const formatFileSize = (bytes: number) => {
@@ -184,7 +197,7 @@ export default function HomePage() {
             )}
           </div>
 
-          {isProcessing && uploadProgress > 0 && (
+          {videoFile && uploadProgress < 100 && uploadProgress > 0 && (
             <div className="mt-4">
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
                 <div
@@ -198,6 +211,42 @@ export default function HomePage() {
             </div>
           )}
         </div>
+
+        {/* Video Metadata Panel */}
+        {(videoMetadata || isUploading) && (
+          <div className="glass-card p-6 animate-fade-in border border-primary/20 bg-primary/5">
+            <div className="flex items-center gap-2 text-lg font-semibold mb-4 text-primary">
+              <Film className="w-5 h-5" />
+              <span>Video Info</span>
+            </div>
+            
+            {isUploading ? (
+              <div className="flex flex-col items-center justify-center py-6 space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground animate-pulse">Extracting video metadata...</p>
+              </div>
+            ) : videoMetadata ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Resolution</p>
+                  <p className="font-mono font-medium">{videoMetadata.width}x{videoMetadata.height}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Original FPS</p>
+                  <p className="font-mono font-medium">{videoMetadata.fps.toFixed(2)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
+                  <p className="font-mono font-medium">{videoMetadata.duration.toFixed(2)}s</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Frames</p>
+                  <p className="font-mono font-medium">{videoMetadata.total_frames}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* Config Section */}
         <div className="glass-card p-6 space-y-5">
@@ -308,12 +357,12 @@ export default function HomePage() {
         {/* Process Button */}
         <button
           id="process-button"
-          disabled={!videoFile || isProcessing}
+          disabled={!videoFile || isProcessing || isUploading || !jobId}
           onClick={handleProcess}
           className="w-full h-14 rounded-xl text-lg font-semibold transition-all duration-300 
             bg-gradient-to-r from-primary to-accent text-primary-foreground
             hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.01]
-            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none
+            disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none
             flex items-center justify-center gap-3"
         >
           {isProcessing ? (
