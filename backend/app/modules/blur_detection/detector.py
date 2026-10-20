@@ -12,6 +12,8 @@ from typing import Callable, List, Optional
 
 import cv2
 
+from app.models.manifest import BlurDecision
+
 logger = logging.getLogger("gs_prep.modules.blur_detection")
 
 
@@ -32,7 +34,7 @@ class BlurDetector:
         self,
         frames_dir: Path,
         blur_dir: Path,
-        threshold: float = 100.0,
+        threshold: float = 10.0,
     ):
         self.frames_dir = frames_dir
         self.blur_dir = blur_dir
@@ -53,17 +55,20 @@ class BlurDetector:
         if image is None:
             return 0.0
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        return cv2.Laplacian(gray, cv2.CV_64F).var()
+        return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
     def detect(
         self,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        on_decision: Optional[Callable[[BlurDecision], None]] = None,
     ) -> int:
         """
         Scan all frames and move blurry ones to blur_dir.
 
         Args:
             on_progress: Optional callback(current, total) for progress tracking.
+            on_decision: Optional callback receiving the score and decision
+                already used by this detector.
 
         Returns:
             int: Number of blurry frames removed.
@@ -79,10 +84,20 @@ class BlurDetector:
         for i, frame_path in enumerate(frames, 1):
             score = self.compute_blur_score(frame_path)
 
-            if score < self.threshold:
+            is_blurry = score < self.threshold
+            if is_blurry:
                 shutil.move(str(frame_path), str(self.blur_dir / frame_path.name))
                 blur_count += 1
                 logger.debug("Blur detected: %s (score=%.1f)", frame_path.name, score)
+
+            if on_decision:
+                on_decision(
+                    BlurDecision(
+                        filename=frame_path.name,
+                        blur_score=score,
+                        is_blurry=is_blurry,
+                    )
+                )
 
             if on_progress:
                 on_progress(i, total)

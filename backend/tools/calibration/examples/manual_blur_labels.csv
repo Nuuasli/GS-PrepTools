@@ -1,0 +1,4 @@
+dataset_id,filename,label
+example_video,IMG_000001.jpg,sharp
+example_video,IMG_000002.jpg,blur
+example_video,IMG_000003.jpg,borderline

@@ -17,6 +17,8 @@ import cv2
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
 
+from app.models.manifest import DuplicateDecision
+
 logger = logging.getLogger("gs_prep.modules.duplicate_detection")
 
 
@@ -35,7 +37,7 @@ class DuplicateDetector:
         self,
         frames_dir: Path,
         duplicate_dir: Path,
-        threshold: float = 0.85,
+        threshold: float = 0.5,
         method: str = "orb",
     ):
         self.frames_dir = frames_dir
@@ -113,6 +115,7 @@ class DuplicateDetector:
     def detect(
         self,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        on_decision: Optional[Callable[[DuplicateDecision], None]] = None,
     ) -> int:
         """
         Scan frames sequentially and remove duplicates compared to previous frame.
@@ -122,6 +125,8 @@ class DuplicateDetector:
 
         Args:
             on_progress: Optional callback(current, total) for progress tracking.
+            on_decision: Optional callback receiving the exact score, reference,
+                and decision already used by this detector.
 
         Returns:
             int: Number of duplicate frames removed.
@@ -131,6 +136,17 @@ class DuplicateDetector:
         frames: List[Path] = sorted(self.frames_dir.glob("*.jpg"))
         total = len(frames)
         duplicate_count = 0
+
+        if total == 1 and on_decision:
+            on_decision(
+                DuplicateDecision(
+                    filename=frames[0].name,
+                    similarity_score=None,
+                    duplicate_method=self.method,
+                    compared_with=None,
+                    is_duplicate=False,
+                )
+            )
 
         if total <= 1:
             if on_progress:
@@ -151,12 +167,24 @@ class DuplicateDetector:
         )
 
         prev_frame = frames[0]
+        if on_decision:
+            on_decision(
+                DuplicateDecision(
+                    filename=prev_frame.name,
+                    similarity_score=None,
+                    duplicate_method=self.method,
+                    compared_with=None,
+                    is_duplicate=False,
+                )
+            )
 
         for i in range(1, total):
             current_frame = frames[i]
             similarity = compare_fn(prev_frame, current_frame)
+            compared_with = prev_frame.name
+            is_duplicate = similarity >= self.threshold
 
-            if similarity >= self.threshold:
+            if is_duplicate:
                 shutil.move(
                     str(current_frame),
                     str(self.duplicate_dir / current_frame.name),
@@ -170,6 +198,17 @@ class DuplicateDetector:
             else:
                 # Update reference frame only when current is unique
                 prev_frame = current_frame
+
+            if on_decision:
+                on_decision(
+                    DuplicateDecision(
+                        filename=current_frame.name,
+                        similarity_score=similarity,
+                        duplicate_method=self.method,
+                        compared_with=compared_with,
+                        is_duplicate=is_duplicate,
+                    )
+                )
 
             if on_progress:
                 on_progress(i, total - 1)

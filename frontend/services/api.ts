@@ -35,7 +35,9 @@ async function apiFetch<T>(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(
-      errorBody.message || `API Error: ${response.status} ${response.statusText}`
+      errorBody.detail ||
+        errorBody.message ||
+        `API Error: ${response.status} ${response.statusText}`
     );
   }
 
@@ -75,9 +77,18 @@ export async function uploadVideo(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText));
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("Upload failed: invalid server response"));
+        }
       } else {
-        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+        try {
+          const body = JSON.parse(xhr.responseText);
+          reject(new Error(body.detail || body.message || `Upload failed: ${xhr.status}`));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+        }
       }
     });
 
@@ -126,6 +137,10 @@ export function getDatasetDownloadUrl(jobId: string): string {
 
 export function getReportDownloadUrl(jobId: string): string {
   return `${API_BASE_URL}/pipeline/${jobId}/download/report`;
+}
+
+export function getManifestDownloadUrl(jobId: string): string {
+  return `${API_BASE_URL}/pipeline/${jobId}/download/manifest`;
 }
 
 export function getPreviewImageUrl(jobId: string, filename: string): string {

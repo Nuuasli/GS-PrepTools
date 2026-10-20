@@ -7,7 +7,8 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePipelineStore } from "@/hooks/use-pipeline-store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -21,6 +22,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       })
   );
+
+  useEffect(() => {
+    void Promise.resolve(usePipelineStore.persist.rehydrate()).finally(() => {
+      usePipelineStore.getState().setHasHydrated(true);
+    });
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

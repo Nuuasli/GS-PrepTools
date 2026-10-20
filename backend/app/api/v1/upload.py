@@ -4,16 +4,20 @@ GS-Prep Backend — Upload API Router
 Handles video file uploads and metadata extraction.
 """
 
+import hashlib
 import logging
 from pathlib import Path
 
-import cv2
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from app.core.config import settings
 from app.core.exceptions import FileTooLargeError, InvalidFileTypeError
-from app.models.schemas import UploadResponse, VideoMetadata
+from app.models.schemas import UploadResponse
 from app.services.pipeline import pipeline_service
+from app.services.video_metadata import (
+    MetadataExtractionError,
+    video_metadata_extractor,
+)
 
 logger = logging.getLogger("gs_prep.api.upload")
 
@@ -28,7 +32,7 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
     Upload a video file and extract its metadata.
 
     The video is saved to the uploads directory and metadata
-    (duration, FPS, resolution, codec) is extracted using OpenCV.
+    Detailed metadata is extracted using FFprobe and cross-checked with OpenCV.
     A new processing job is created and the job ID is returned.
 
     Args:
@@ -38,7 +42,9 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
         UploadResponse: Job ID and video metadata.
     """
     # Validate file type
-    ext = Path(file.filename or "").suffix.lower()
+    raw_filename = (file.filename or "uploaded_video.mp4").replace("\\", "/")
+    original_filename = raw_filename.rsplit("/", 1)[-1]
+    ext = Path(original_filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise InvalidFileTypeError(
             f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
@@ -47,9 +53,11 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
     # Save file
     upload_dir = settings.upload_path
     upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / (file.filename or "uploaded_video.mp4")
+    job_id = pipeline_service.new_job_id()
+    file_path = upload_dir / f"{job_id}{ext}"
 
     file_size = 0
+    checksum = hashlib.sha256()
     with open(file_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
             file_size += len(chunk)
@@ -60,42 +68,22 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
                     f"File exceeds maximum size of {settings.max_upload_size_mb}MB"
                 )
             f.write(chunk)
+            checksum.update(chunk)
 
     logger.info("Video uploaded: %s (%d bytes)", file_path.name, file_size)
 
-    # Extract video metadata using OpenCV
-    cap = cv2.VideoCapture(str(file_path))
-    if not cap.isOpened():
+    try:
+        video_metadata = video_metadata_extractor.extract(
+            file_path,
+            original_filename=original_filename,
+            file_size=file_size,
+            sha256=checksum.hexdigest(),
+        )
+    except MetadataExtractionError as exc:
         file_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="Cannot read video file")
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
-    codec = (
-        chr(fourcc & 0xFF)
-        + chr((fourcc >> 8) & 0xFF)
-        + chr((fourcc >> 16) & 0xFF)
-        + chr((fourcc >> 24) & 0xFF)
-    )
-    duration = total_frames / fps if fps > 0 else 0
-
-    cap.release()
-
-    video_metadata = VideoMetadata(
-        filename=file_path.name,
-        duration=duration,
-        fps=fps,
-        total_frames=total_frames,
-        width=width,
-        height=height,
-        codec=codec.strip(),
-        file_size=file_size,
-    )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Create job
-    job_id = pipeline_service.create_job(file_path, video_metadata)
+    pipeline_service.create_job(file_path, video_metadata, job_id=job_id)
 
     return UploadResponse(job_id=job_id, video_metadata=video_metadata)

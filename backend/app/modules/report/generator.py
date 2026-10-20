@@ -125,6 +125,32 @@ class ReportGenerator:
             ],
             ["Codec", str(video_info.get("codec", "N/A"))],
         ]
+        container_info = video_info.get("container") or {}
+        stream_info = video_info.get("video_stream") or {}
+        audio_info = video_info.get("audio_stream") or {}
+        integrity_info = video_info.get("integrity") or {}
+        checksum = str(integrity_info.get("sha256") or "")
+        checksum_summary = (
+            f"{checksum[:16]}...{checksum[-16:]}" if len(checksum) > 35 else checksum
+        )
+        video_data.extend(
+            [
+                ["Container", str(container_info.get("format_name") or "N/A")],
+                ["Bitrate", str(container_info.get("bit_rate") or "N/A")],
+                ["Pixel Format", str(stream_info.get("pixel_format") or "N/A")],
+                [
+                    "Frame Count Source",
+                    str(stream_info.get("frame_count_source") or "legacy"),
+                ],
+                ["Rotation", f"{stream_info.get('rotation', 0)} degrees"],
+                ["Audio Codec", str(audio_info.get("codec_name") or "None")],
+                [
+                    "Metadata Source",
+                    str(integrity_info.get("metadata_source") or "legacy"),
+                ],
+                ["SHA-256", checksum_summary or "N/A"],
+            ]
+        )
         elements.append(self._create_table(video_data))
 
         # --- Extraction ---
@@ -167,8 +193,21 @@ class ReportGenerator:
 
         # --- Dataset Summary ---
         elements.append(Paragraph("Dataset Summary", heading_style))
+        extracted_frames = int(dataset_info.get("extracted_frames", 0))
+        accepted_frames = int(dataset_info.get("final_images", 0))
+        rejected_blur = int(dataset_info.get("rejected_blur", 0))
+        rejected_duplicate = int(dataset_info.get("rejected_duplicate", 0))
+        retention_rate = (
+            (accepted_frames / extracted_frames) * 100 if extracted_frames else 0.0
+        )
+        reduction_rate = 100.0 - retention_rate if extracted_frames else 0.0
         summary_data = [
-            ["Final Images", str(dataset_info.get("final_images", 0))],
+            ["Total Extracted Frames", str(extracted_frames)],
+            ["Accepted Frames", str(accepted_frames)],
+            ["Rejected Blur", str(rejected_blur)],
+            ["Rejected Duplicate", str(rejected_duplicate)],
+            ["Retention Rate", f"{retention_rate:.1f}%"],
+            ["Reduction Rate", f"{reduction_rate:.1f}%"],
             ["Processing Time", f"{processing_time:.1f} seconds"],
         ]
         elements.append(self._create_table(summary_data))

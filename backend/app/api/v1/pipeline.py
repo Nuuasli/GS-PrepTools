@@ -38,8 +38,11 @@ async def start_pipeline(job_id: str, config: ProcessingConfig) -> dict:
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
 
-    pipeline_service.start_pipeline(job_id, config)
-    return {"status": "started", "job_id": job_id}
+    try:
+        status = pipeline_service.start_pipeline(job_id, config)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": status, "job_id": job_id}
 
 
 @router.get("/{job_id}/progress", response_model=PipelineProgress)
@@ -141,6 +144,25 @@ async def download_report(job_id: str) -> FileResponse:
     )
 
 
+@router.get("/{job_id}/download/manifest")
+async def download_manifest(job_id: str) -> FileResponse:
+    """Download the per-frame processing manifest as CSV."""
+    job = pipeline_service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    video_name = getattr(job, "video_folder_name", "dataset")
+    manifest_path = job.job_dir / f"{video_name}_manifest.csv"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=404, detail="Manifest not ready")
+
+    return FileResponse(
+        path=str(manifest_path),
+        media_type="text/csv",
+        filename=f"{video_name}_manifest.csv",
+    )
+
+
 @router.get("/{job_id}/preview/{filename}")
 async def preview_image(job_id: str, filename: str) -> FileResponse:
     """
@@ -157,13 +179,15 @@ async def preview_image(job_id: str, filename: str) -> FileResponse:
     if not job:
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
 
-    # Check under video_folder_name/processed/
-    image_path = getattr(job, "output_dir", job.job_dir) / "processed" / filename
+    safe_filename = Path(filename).name
+    if safe_filename != filename:
+        raise HTTPException(status_code=400, detail="Invalid preview filename")
+
+    image_path = job.job_dir / "previews" / safe_filename
     if not image_path.exists():
-        # Fallback for direct job_dir/processed/
-        image_path = job.job_dir / "processed" / filename
+        image_path = getattr(job, "output_dir", job.job_dir) / "processed" / safe_filename
         if not image_path.exists():
-            raise HTTPException(status_code=404, detail=f"Image not found: {filename}")
+            raise HTTPException(status_code=404, detail=f"Image not found: {safe_filename}")
 
     return FileResponse(path=str(image_path), media_type="image/jpeg")
 
@@ -179,6 +203,10 @@ async def delete_job(job_id: str) -> dict:
     Returns:
         dict: Deletion status.
     """
-    pipeline_service.delete_job(job_id)
+    try:
+        deleted = pipeline_service.delete_job(job_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
     return {"status": "deleted", "job_id": job_id}
-

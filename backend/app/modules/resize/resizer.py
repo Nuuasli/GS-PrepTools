@@ -2,10 +2,12 @@
 GS-Prep Backend — Image Resize Module
 
 Resizes images to a target width while maintaining aspect ratio.
-Uses high-quality bicubic interpolation (cv2.INTER_CUBIC for downscale).
+Uses area interpolation for downscaling and copies unchanged JPEGs without
+recompression when no resize is needed.
 """
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
@@ -31,11 +33,13 @@ class ImageResizer:
         self,
         frames_dir: Path,
         output_dir: Path,
-        target_width: int = 1920,
+        target_width: int = 0,
+        jpeg_quality: int = 100,
     ):
         self.frames_dir = frames_dir
         self.output_dir = output_dir
         self.target_width = target_width
+        self.jpeg_quality = jpeg_quality
 
     def resize(
         self,
@@ -83,7 +87,14 @@ class ImageResizer:
                 final_height = h
 
             output_path = self.output_dir / frame_path.name
-            cv2.imwrite(str(output_path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            if self.target_width == 0 or w <= self.target_width:
+                shutil.copy2(frame_path, output_path)
+            elif not cv2.imwrite(
+                str(output_path),
+                image,
+                [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
+            ):
+                raise RuntimeError(f"Could not write final image: {output_path}")
 
             if on_progress:
                 on_progress(i, total)

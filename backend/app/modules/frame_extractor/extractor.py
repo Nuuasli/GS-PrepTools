@@ -8,10 +8,13 @@ Output naming convention: IMG_000001.jpg (zero-padded 6 digits)
 """
 
 import logging
+import math
 from pathlib import Path
 from typing import Callable, Optional
 
 import cv2
+
+from app.models.manifest import ExtractedFrameMetadata
 
 logger = logging.getLogger("gs_prep.modules.frame_extractor")
 
@@ -32,7 +35,7 @@ class FrameExtractor:
         video_path: Path,
         output_dir: Path,
         extraction_fps: int = 2,
-        jpeg_quality: int = 95,
+        jpeg_quality: int = 100,
     ):
         self.video_path = video_path
         self.output_dir = output_dir
@@ -42,12 +45,15 @@ class FrameExtractor:
     def extract(
         self,
         on_progress: Optional[Callable[[int, int], None]] = None,
+        on_frame: Optional[Callable[[ExtractedFrameMetadata], None]] = None,
     ) -> int:
         """
         Extract frames from the video.
 
         Args:
             on_progress: Optional callback(current, total) for progress tracking.
+            on_frame: Optional callback containing the source position of each
+                successfully written frame.
 
         Returns:
             int: Number of frames extracted.
@@ -64,17 +70,21 @@ class FrameExtractor:
         video_fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Calculate frame interval
-        frame_interval = max(1, int(video_fps / self.extraction_fps))
+        if video_fps <= 0:
+            cap.release()
+            raise RuntimeError("Video reports an invalid FPS value")
 
-        # Estimate expected extracted frames
-        estimated_total = max(1, total_frames // frame_interval)
+        target_fps = min(float(self.extraction_fps), video_fps)
+        frame_ratio = video_fps / target_fps
+        estimated_total = max(
+            1,
+            min(total_frames, math.ceil((total_frames / video_fps) * target_fps)),
+        )
 
         logger.info(
-            "Extracting frames: video_fps=%.1f, extraction_fps=%d, interval=%d, estimated=%d",
+            "Extracting frames: video_fps=%.1f, extraction_fps=%.1f, estimated=%d",
             video_fps,
-            self.extraction_fps,
-            frame_interval,
+            target_fps,
             estimated_total,
         )
 
@@ -87,11 +97,23 @@ class FrameExtractor:
             if not ret:
                 break
 
-            if frame_index % frame_interval == 0:
+            next_sample_index = round(extracted_count * frame_ratio)
+            if frame_index >= next_sample_index:
                 extracted_count += 1
-                filename = f"{extracted_count:05d}.jpg"
+                filename = f"IMG_{extracted_count:06d}.jpg"
                 output_path = self.output_dir / filename
-                cv2.imwrite(str(output_path), frame, encode_params)
+                if not cv2.imwrite(str(output_path), frame, encode_params):
+                    cap.release()
+                    raise RuntimeError(f"Could not write extracted frame: {output_path}")
+
+                if on_frame:
+                    on_frame(
+                        ExtractedFrameMetadata(
+                            filename=filename,
+                            source_frame_index=frame_index,
+                            source_timestamp=frame_index / video_fps,
+                        )
+                    )
 
                 if on_progress:
                     on_progress(extracted_count, estimated_total)

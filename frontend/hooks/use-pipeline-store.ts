@@ -6,6 +6,7 @@
  */
 
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type {
   ProcessingConfig,
   VideoMetadata,
@@ -36,16 +37,18 @@ interface PipelineState {
 
   // --- Result ---
   result: ProcessingResult | null;
+  hasHydrated: boolean;
 
   // --- Actions ---
   setVideoFile: (file: File | null) => void;
-  setJobId: (jobId: string) => void;
-  setVideoMetadata: (metadata: VideoMetadata) => void;
+  setJobId: (jobId: string | null) => void;
+  setVideoMetadata: (metadata: VideoMetadata | null) => void;
   updateConfig: (config: Partial<ProcessingConfig>) => void;
   setProcessing: (processing: boolean) => void;
   updateStepProgress: (step: PipelineStep, update: Partial<StepProgress>) => void;
   setCurrentStep: (step: PipelineStep) => void;
   setResult: (result: ProcessingResult) => void;
+  setHasHydrated: (hydrated: boolean) => void;
   reset: () => void;
 }
 
@@ -55,12 +58,15 @@ interface PipelineState {
 
 const DEFAULT_CONFIG: ProcessingConfig = {
   extraction_fps: 2,
-  jpeg_quality: 95,
-  blur_threshold: 80,
-  duplicate_threshold: 0.85,
-  resize_width: 1920,
+  jpeg_quality: 100,
+  blur_threshold: 10,
+  duplicate_threshold: 0.5,
+  resize_width: 0,
   duplicate_method: "orb" as DuplicateMethod,
+  keep_intermediates: true,
 };
+
+const PERSIST_VERSION = 2;
 
 const createInitialSteps = (): StepProgress[] => [
   { step: "upload" as PipelineStep, status: "pending" as StepStatus, progress: 0, message: "Waiting..." },
@@ -75,7 +81,9 @@ const createInitialSteps = (): StepProgress[] => [
 // Store
 // ========================
 
-export const usePipelineStore = create<PipelineState>((set) => ({
+export const usePipelineStore = create<PipelineState>()(
+  persist(
+    (set) => ({
   // Initial state
   jobId: null,
   videoFile: null,
@@ -85,6 +93,7 @@ export const usePipelineStore = create<PipelineState>((set) => ({
   steps: createInitialSteps(),
   currentStep: null,
   result: null,
+  hasHydrated: false,
 
   // Actions
   setVideoFile: (file) => set({ videoFile: file }),
@@ -109,6 +118,8 @@ export const usePipelineStore = create<PipelineState>((set) => ({
 
   setResult: (result) => set({ result }),
 
+  setHasHydrated: (hydrated) => set({ hasHydrated: hydrated }),
+
   reset: () =>
     set({
       jobId: null,
@@ -120,4 +131,34 @@ export const usePipelineStore = create<PipelineState>((set) => ({
       currentStep: null,
       result: null,
     }),
-}));
+    }),
+    {
+      name: "gs-prep-pipeline",
+      version: PERSIST_VERSION,
+      storage: createJSONStorage(() => sessionStorage),
+      skipHydration: true,
+      migrate: (persistedState, version) => {
+        const state = (persistedState ?? {}) as Partial<PipelineState>;
+        if (version < PERSIST_VERSION) {
+          return {
+            ...state,
+            config: { ...DEFAULT_CONFIG },
+          } as PipelineState;
+        }
+        return state as PipelineState;
+      },
+      partialize: (state) => ({
+        jobId: state.jobId,
+        videoMetadata: state.videoMetadata,
+        config: state.config,
+        isProcessing: state.isProcessing,
+        steps: state.steps,
+        currentStep: state.currentStep,
+        result: state.result,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
+    }
+  )
+);

@@ -1,0 +1,3 @@
+dataset_id,filename,compared_with,label
+example_video,IMG_000002.jpg,IMG_000001.jpg,keep
+example_video,IMG_000003.jpg,IMG_000002.jpg,duplicate

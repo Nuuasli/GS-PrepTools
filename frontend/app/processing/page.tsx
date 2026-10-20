@@ -13,7 +13,7 @@
  *    - Older completed tasks exit cleanly with fade-out upwards.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -150,29 +150,43 @@ function getDisplayTasks(steps: StepProgress[]): DisplayTask[] {
 
 export default function ProcessingPage() {
   const router = useRouter();
-  const { jobId, config, steps, setResult, updateStepProgress, setCurrentStep } =
-    usePipelineStore();
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const {
+    jobId,
+    config,
+    steps,
+    setResult,
+    updateStepProgress,
+    setCurrentStep,
+    setProcessing,
+    reset,
+    hasHydrated,
+  } = usePipelineStore();
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startedRef = useRef(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!jobId) {
       router.push("/");
       return;
     }
 
-    // Start pipeline
-    if (!startedRef.current) {
-      startedRef.current = true;
-      startPipeline(jobId, config).catch(console.error);
-    }
+    let cancelled = false;
+    let consecutivePollingErrors = 0;
 
-    // Poll for progress
-    pollingRef.current = setInterval(async () => {
+    const fail = (message: string) => {
+      if (cancelled) return;
+      setProcessingError(message);
+      setProcessing(false);
+    };
+
+    const poll = async () => {
       try {
         const progress = await getPipelineProgress(jobId);
+        consecutivePollingErrors = 0;
+        if (cancelled) return;
 
-        // Update each step's progress
         progress.steps.forEach((stepProgress) => {
           updateStepProgress(stepProgress.step as PipelineStep, {
             status: stepProgress.status as StepStatus,
@@ -185,23 +199,65 @@ export default function ProcessingPage() {
 
         setCurrentStep(progress.current_step);
 
-        // Check if all done
-        if (progress.overall_progress >= 100) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
+        if (progress.status === "failed") {
+          fail(progress.error || "Dataset processing failed.");
+          return;
+        }
+
+        if (progress.status === "completed") {
           const { getPipelineResult } = await import("@/services/api");
           const result = await getPipelineResult(jobId);
+          if (cancelled) return;
           setResult(result);
+          setProcessing(false);
           router.push("/result");
+          return;
         }
-      } catch {
-        // Silently retry on progress polling errors
+
+        pollingRef.current = setTimeout(poll, 1000);
+      } catch (error) {
+        consecutivePollingErrors += 1;
+        if (consecutivePollingErrors >= 5) {
+          fail(
+            error instanceof Error
+              ? error.message
+              : "Unable to contact the processing server."
+          );
+          return;
+        }
+        pollingRef.current = setTimeout(poll, 1500);
       }
-    }, 1000);
+    };
+
+    const startAndPoll = async () => {
+      if (!startedRef.current) {
+        startedRef.current = true;
+        try {
+          await startPipeline(jobId, config);
+        } catch (error) {
+          fail(error instanceof Error ? error.message : "Could not start processing.");
+          return;
+        }
+      }
+      if (!cancelled) await poll();
+    };
+
+    void startAndPoll();
 
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      cancelled = true;
+      if (pollingRef.current) clearTimeout(pollingRef.current);
     };
-  }, [jobId, config, router, setResult, updateStepProgress, setCurrentStep]);
+  }, [
+    jobId,
+    config,
+    hasHydrated,
+    router,
+    setCurrentStep,
+    setProcessing,
+    setResult,
+    updateStepProgress,
+  ]);
 
   const overallProgress = Math.round(
     steps.reduce((sum, s) => sum + s.progress, 0) / (steps.length || 1)
@@ -261,6 +317,37 @@ export default function ProcessingPage() {
               <span className="font-semibold text-foreground">
                 {activeMeta.label}
               </span>
+            </div>
+          )}
+
+          {processingError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-left"
+            >
+              <div className="flex items-start gap-3">
+                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-destructive">
+                      Processing failed
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {processingError}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      reset();
+                      router.push("/");
+                    }}
+                    className="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                  >
+                    Start a new project
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

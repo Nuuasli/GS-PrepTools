@@ -21,9 +21,17 @@ import {
   Trash2,
   Layers,
   Scaling,
+  Loader2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { usePipelineStore } from "@/hooks/use-pipeline-store";
-import { getDatasetDownloadUrl, getReportDownloadUrl, getPreviewImageUrl } from "@/services/api";
+import {
+  getDatasetDownloadUrl,
+  getPipelineResult,
+  getPreviewImageUrl,
+  getReportDownloadUrl,
+  getManifestDownloadUrl,
+} from "@/services/api";
 
 interface StatCardProps {
   icon: React.ElementType;
@@ -51,13 +59,40 @@ function StatCard({ icon: Icon, label, value, sublabel }: StatCardProps) {
 
 export default function ResultPage() {
   const router = useRouter();
-  const { result, jobId, reset } = usePipelineStore();
+  const { result, jobId, reset, setResult, hasHydrated } = usePipelineStore();
 
   useEffect(() => {
-    if (!result || !jobId) {
+    if (!hasHydrated) return;
+    if (!jobId) {
       router.push("/");
+      return;
     }
-  }, [result, jobId, router]);
+    if (result) return;
+
+    let cancelled = false;
+    getPipelineResult(jobId)
+      .then((restoredResult) => {
+        if (!cancelled) setResult(restoredResult);
+      })
+      .catch(() => {
+        if (!cancelled) router.push("/processing");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasHydrated, jobId, result, router, setResult]);
+
+  if (!hasHydrated || (jobId && !result)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          Restoring job result...
+        </div>
+      </main>
+    );
+  }
 
   if (!result || !jobId) return null;
 
@@ -66,6 +101,10 @@ export default function ResultPage() {
     const s = Math.floor(seconds % 60);
     return `${m}m ${s}s`;
   };
+
+  const retentionRate = result.extraction.extracted_frames
+    ? (result.dataset_summary.final_images / result.extraction.extracted_frames) * 100
+    : 0;
 
   const handleNewProject = async () => {
     if (jobId) {
@@ -102,7 +141,7 @@ export default function ResultPage() {
             <Film className="w-5 h-5 text-primary" />
             Video Information
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
             <div>
               <span className="text-muted-foreground">Filename</span>
               <p className="font-medium truncate">{result.video_info.filename}</p>
@@ -121,6 +160,18 @@ export default function ResultPage() {
                 {result.video_info.width}×{result.video_info.height}
               </p>
             </div>
+            <div>
+              <span className="text-muted-foreground">Codec / Container</span>
+              <p className="font-medium">
+                {result.video_info.codec} / {result.video_info.container?.format_name ?? "N/A"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Metadata Source</span>
+              <p className="font-medium">
+                {result.video_info.integrity?.metadata_source ?? "legacy"}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -130,6 +181,7 @@ export default function ResultPage() {
             icon={ImageIcon}
             label="Final Images"
             value={result.dataset_summary.final_images}
+            sublabel={`${retentionRate.toFixed(1)}% retained`}
           />
           <StatCard
             icon={Check}
@@ -210,6 +262,19 @@ export default function ResultPage() {
             <FileText className="w-5 h-5" />
             Download Report
           </a>
+          {result.manifest_url && (
+            <a
+              href={getManifestDownloadUrl(jobId)}
+              download
+              className="flex-1 h-12 rounded-xl font-semibold transition-all duration-300
+                bg-secondary text-secondary-foreground border border-border
+                hover:bg-muted
+                flex items-center justify-center gap-2"
+            >
+              <FileSpreadsheet className="w-5 h-5" />
+              Download Manifest
+            </a>
+          )}
         </div>
 
         {/* New Project */}

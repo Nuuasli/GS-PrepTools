@@ -24,6 +24,13 @@ export enum StepStatus {
   FAILED = "failed",
 }
 
+export enum JobStatus {
+  UPLOADED = "uploaded",
+  RUNNING = "running",
+  COMPLETED = "completed",
+  FAILED = "failed",
+}
+
 // ========================
 // API Response Types
 // ========================
@@ -44,6 +51,64 @@ export interface VideoMetadata {
   height: number;
   codec: string;
   file_size: number;
+  container?: ContainerMetadata | null;
+  video_stream?: VideoStreamMetadata | null;
+  audio_stream?: AudioStreamMetadata | null;
+  integrity?: MediaIntegrityMetadata | null;
+}
+
+export interface ContainerMetadata {
+  format_name?: string | null;
+  format_long_name?: string | null;
+  duration?: number | null;
+  start_time?: number | null;
+  bit_rate?: number | null;
+  stream_count?: number | null;
+}
+
+export interface VideoStreamMetadata {
+  stream_index?: number | null;
+  codec_name?: string | null;
+  codec_long_name?: string | null;
+  profile?: string | null;
+  level?: number | null;
+  pixel_format?: string | null;
+  bit_depth?: number | null;
+  coded_width?: number | null;
+  coded_height?: number | null;
+  average_frame_rate?: number | null;
+  nominal_frame_rate?: number | null;
+  frame_count_source: string;
+  duration_source: string;
+  possible_variable_frame_rate: boolean;
+  sample_aspect_ratio?: string | null;
+  display_aspect_ratio?: string | null;
+  rotation: number;
+  bit_rate?: number | null;
+  time_base?: string | null;
+  color_range?: string | null;
+  color_space?: string | null;
+  color_transfer?: string | null;
+  color_primaries?: string | null;
+  field_order?: string | null;
+}
+
+export interface AudioStreamMetadata {
+  present: boolean;
+  stream_index?: number | null;
+  codec_name?: string | null;
+  codec_long_name?: string | null;
+  profile?: string | null;
+  sample_rate?: number | null;
+  channels?: number | null;
+  channel_layout?: string | null;
+  bit_rate?: number | null;
+}
+
+export interface MediaIntegrityMetadata {
+  sha256: string;
+  metadata_source: string;
+  warnings: string[];
 }
 
 export interface UploadResponse {
@@ -67,6 +132,7 @@ export interface ProcessingConfig {
   duplicate_threshold: number;
   duplicate_method: DuplicateMethod;
   resize_width: number;
+  keep_intermediates: boolean;
 }
 
 export const RESIZE_OPTIONS = [
@@ -94,6 +160,8 @@ export interface PipelineProgress {
   steps: StepProgress[];
   current_step: PipelineStep;
   overall_progress: number;
+  status: JobStatus;
+  error?: string;
 }
 
 // ========================
@@ -136,5 +204,6 @@ export interface ProcessingResult {
   processing_time: number;
   report_url: string;
   dataset_url: string;
+  manifest_url?: string | null;
   preview_images: string[];
 }

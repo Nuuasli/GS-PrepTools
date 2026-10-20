@@ -32,6 +32,14 @@ class StepStatus(str, Enum):
     FAILED = "failed"
 
 
+class JobStatus(str, Enum):
+    """Lifecycle status for a processing job."""
+    UPLOADED = "uploaded"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class DuplicateMethod(str, Enum):
     """Duplicate detection algorithm selection."""
     ORB = "orb"
@@ -42,8 +50,71 @@ class DuplicateMethod(str, Enum):
 # Video Metadata
 # ========================
 
+class ContainerMetadata(BaseModel):
+    """Container-level metadata reported by FFprobe."""
+
+    format_name: Optional[str] = None
+    format_long_name: Optional[str] = None
+    duration: Optional[float] = None
+    start_time: Optional[float] = None
+    bit_rate: Optional[int] = None
+    stream_count: Optional[int] = None
+
+
+class VideoStreamMetadata(BaseModel):
+    """Technical metadata for the primary video stream."""
+
+    stream_index: Optional[int] = None
+    codec_name: Optional[str] = None
+    codec_long_name: Optional[str] = None
+    profile: Optional[str] = None
+    level: Optional[int] = None
+    pixel_format: Optional[str] = None
+    bit_depth: Optional[int] = None
+    coded_width: Optional[int] = None
+    coded_height: Optional[int] = None
+    average_frame_rate: Optional[float] = None
+    nominal_frame_rate: Optional[float] = None
+    frame_count_source: str = "unknown"
+    duration_source: str = "unknown"
+    possible_variable_frame_rate: bool = False
+    sample_aspect_ratio: Optional[str] = None
+    display_aspect_ratio: Optional[str] = None
+    rotation: int = 0
+    bit_rate: Optional[int] = None
+    time_base: Optional[str] = None
+    color_range: Optional[str] = None
+    color_space: Optional[str] = None
+    color_transfer: Optional[str] = None
+    color_primaries: Optional[str] = None
+    field_order: Optional[str] = None
+
+
+class AudioStreamMetadata(BaseModel):
+    """Summary of the primary audio stream, when present."""
+
+    present: bool = True
+    stream_index: Optional[int] = None
+    codec_name: Optional[str] = None
+    codec_long_name: Optional[str] = None
+    profile: Optional[str] = None
+    sample_rate: Optional[int] = None
+    channels: Optional[int] = None
+    channel_layout: Optional[str] = None
+    bit_rate: Optional[int] = None
+
+
+class MediaIntegrityMetadata(BaseModel):
+    """File identity and provenance of the extracted metadata."""
+
+    sha256: str
+    metadata_source: str
+    warnings: List[str] = Field(default_factory=list)
+
+
 class VideoMetadata(BaseModel):
-    """Metadata extracted from an uploaded video file."""
+    """Backward-compatible summary plus detailed uploaded-video metadata."""
+
     filename: str
     duration: float
     fps: float
@@ -52,6 +123,10 @@ class VideoMetadata(BaseModel):
     height: int
     codec: str
     file_size: int
+    container: Optional[ContainerMetadata] = None
+    video_stream: Optional[VideoStreamMetadata] = None
+    audio_stream: Optional[AudioStreamMetadata] = None
+    integrity: Optional[MediaIntegrityMetadata] = None
 
 
 # ========================
@@ -71,11 +146,12 @@ class UploadResponse(BaseModel):
 class ProcessingConfig(BaseModel):
     """Configuration options provided by the user for the pipeline."""
     extraction_fps: int = Field(default=2, ge=1, le=30)
-    jpeg_quality: int = Field(default=95, ge=50, le=100)
-    blur_threshold: float = Field(default=80.0, ge=10.0, le=500.0)
-    duplicate_threshold: float = Field(default=0.85, ge=0.5, le=0.99)
+    jpeg_quality: int = Field(default=100, ge=50, le=100)
+    blur_threshold: float = Field(default=10.0, ge=10.0, le=500.0)
+    duplicate_threshold: float = Field(default=0.5, ge=0.5, le=0.99)
     duplicate_method: DuplicateMethod = Field(default=DuplicateMethod.ORB)
-    resize_width: int = Field(default=1920, ge=0, le=7680)
+    resize_width: int = Field(default=0, ge=0, le=7680)
+    keep_intermediates: bool = True
 
 
 # ========================
@@ -98,6 +174,8 @@ class PipelineProgress(BaseModel):
     steps: List[StepProgress]
     current_step: PipelineStep
     overall_progress: float = Field(default=0.0, ge=0.0, le=100.0)
+    status: JobStatus
+    error: Optional[str] = None
 
 
 # ========================
@@ -141,4 +219,5 @@ class ProcessingResult(BaseModel):
     processing_time: float
     report_url: str
     dataset_url: str
+    manifest_url: Optional[str] = None
     preview_images: List[str]

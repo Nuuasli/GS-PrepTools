@@ -5,7 +5,8 @@ Initializes the FastAPI application, registers middleware,
 exception handlers, and API routers.
 """
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -33,16 +34,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings.jobs_path.mkdir(parents=True, exist_ok=True)
     logger.info("Storage directories verified: uploads=%s, jobs=%s", settings.upload_path, settings.jobs_path)
 
-    # Automatic background housekeeping: purge expired jobs/uploads older than 2 hours
     from app.services.pipeline import pipeline_service
-    purged = pipeline_service.cleanup_old_jobs(max_age_hours=2)
+
+    restored = pipeline_service.restore_jobs()
+    if restored > 0:
+        logger.info("Restored %d job metadata records", restored)
+
+    purged = pipeline_service.cleanup_expired_jobs()
     if purged > 0:
         logger.info("Housekeeping: Auto-purged %d expired jobs on startup", purged)
 
-    yield
+    async def housekeeping_loop() -> None:
+        while True:
+            await asyncio.sleep(settings.cleanup_interval_minutes * 60)
+            purged_count = pipeline_service.cleanup_expired_jobs()
+            if purged_count > 0:
+                logger.info("Housekeeping: purged %d expired jobs", purged_count)
 
-    # --- Shutdown ---
-    logger.info("Shutting down %s", settings.app_name)
+    housekeeping_task = asyncio.create_task(housekeeping_loop())
+
+    try:
+        yield
+    finally:
+        # --- Shutdown ---
+        housekeeping_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await housekeeping_task
+        logger.info("Shutting down %s", settings.app_name)
 
 
 def create_app() -> FastAPI:

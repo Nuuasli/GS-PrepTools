@@ -4,12 +4,14 @@ try:
     from app.core.logging import logger
     from app.core.exceptions import GSPrepException
     from app.models.schemas import ProcessingConfig, VideoMetadata, ProcessingResult
+    from app.models.manifest import FrameManifest, FrameManifestRecord
     from app.modules.frame_extractor.extractor import FrameExtractor
     from app.modules.blur_detection.detector import BlurDetector
     from app.modules.duplicate_detection.detector import DuplicateDetector
     from app.modules.resize.resizer import ImageResizer
     from app.modules.report.generator import ReportGenerator
     from app.services.pipeline import pipeline_service
+    from app.services.video_metadata import video_metadata_extractor
     from app.api.v1.health import router as health_router
     from app.api.v1.upload import router as upload_router
     from app.api.v1.pipeline import router as pipeline_router
