@@ -19,6 +19,7 @@ from typing import Callable, Mapping, Optional, Sequence
 
 from tools.image_downscale.runner import (
     DownscaleError,
+    MANIFEST_FILENAME,
     SUPPORTED_EXTENSIONS,
     inspect_image_plan,
     preflight_downscale,
@@ -51,6 +52,18 @@ _WINDOWS_RESERVED = {
 
 class BatchDownscaleError(DownscaleError):
     """Raised when a batch cannot be safely preflighted or completed."""
+
+
+class BatchPreflightError(BatchDownscaleError):
+    """Structured full-preflight failure for one corrupt image."""
+
+    def __init__(self, dataset_name: str, relative_path: str, error: str) -> None:
+        self.dataset_name = dataset_name
+        self.relative_path = relative_path
+        self.image_error = error
+        super().__init__(
+            f"Batch blocked by corrupt image: {relative_path}: {error}"
+        )
 
 
 @dataclass(frozen=True)
@@ -162,6 +175,7 @@ class LocalPathLayout:
     output_root: Path
     dataset_names: dict[str, str]
     dataset_sources: dict[str, Path]
+    dataset_image_containers: dict[str, Optional[str]]
     ignored_files: tuple[str, ...]
 
 
@@ -180,6 +194,7 @@ class QuickSamplePlan:
 class QuickDatasetPreflight:
     dataset_name: str
     dataset_id: str
+    image_container: Optional[str]
     total_images: int
     samples: tuple[QuickSamplePlan, ...]
 
@@ -345,7 +360,7 @@ def preflight_batch(
             CorruptImage(
                 dataset_name=dataset_name,
                 dataset_id=dataset_id,
-                relative_path=f"{dataset_name}/{issue.filename}",
+                relative_path=issue.source_path.relative_to(source_root).as_posix(),
                 error=issue.error,
             )
             for issue in inspection.issues
@@ -393,6 +408,7 @@ def inspect_local_dataset_root(input_path: str, output_path: str) -> LocalPathLa
 
     dataset_names: dict[str, str] = {}
     dataset_sources: dict[str, Path] = {}
+    dataset_image_containers: dict[str, Optional[str]] = {}
     ignored_files: list[str] = []
     for root_file in sorted(input_root.iterdir(), key=lambda item: item.name.casefold()):
         if root_file.is_file():
@@ -415,7 +431,9 @@ def inspect_local_dataset_root(input_path: str, output_path: str) -> LocalPathLa
                 f"{existing!r} and {dataset_name!r}"
             )
 
-        supported = []
+        direct_images: list[Path] = []
+        container_images: list[Path] = []
+        images_dir = root_file / "images"
         for candidate in sorted(
             root_file.rglob("*"),
             key=lambda item: item.relative_to(input_root).as_posix().casefold(),
@@ -426,15 +444,30 @@ def inspect_local_dataset_root(input_path: str, output_path: str) -> LocalPathLa
             if candidate.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 ignored_files.append(relative)
                 continue
-            if candidate.parent != root_file:
+            if candidate.parent == root_file:
+                direct_images.append(candidate)
+            elif candidate.parent == images_dir:
+                container_images.append(candidate)
+            else:
                 raise BatchDownscaleError(
-                    "Nested image directories are not supported: " f"{relative}"
+                    "Unsupported nested image layout; expected dataset/image or "
+                    f"dataset/images/image: {relative}"
                 )
-            supported.append(candidate)
 
-        if supported:
+        if direct_images and container_images:
+            raise BatchDownscaleError(
+                "Ambiguous dataset layout; images exist both directly in the dataset "
+                f"and in its images folder: {dataset_name}"
+            )
+
+        if direct_images or container_images:
             dataset_names[dataset_id] = dataset_name
-            dataset_sources[dataset_id] = root_file
+            if container_images:
+                dataset_sources[dataset_id] = images_dir
+                dataset_image_containers[dataset_id] = "images"
+            else:
+                dataset_sources[dataset_id] = root_file
+                dataset_image_containers[dataset_id] = None
 
     if not dataset_names:
         raise BatchDownscaleError("No datasets containing supported images were found")
@@ -443,6 +476,7 @@ def inspect_local_dataset_root(input_path: str, output_path: str) -> LocalPathLa
         output_root=output_root,
         dataset_names=dataset_names,
         dataset_sources=dataset_sources,
+        dataset_image_containers=dataset_image_containers,
         ignored_files=tuple(ignored_files),
     )
 
@@ -472,6 +506,10 @@ def quick_preflight_local(
     for dataset_id in sorted(layout.dataset_names, key=str.casefold):
         dataset_name = layout.dataset_names[dataset_id]
         source_dir = layout.dataset_sources[dataset_id]
+        image_container = layout.dataset_image_containers[dataset_id]
+        planned_output = layout.output_root / dataset_id
+        if image_container is not None:
+            planned_output /= image_container
         images = sorted(
             (
                 path
@@ -485,7 +523,7 @@ def quick_preflight_local(
             try:
                 plan = inspect_image_plan(
                     source_path,
-                    layout.output_root / dataset_id / source_path.name,
+                    planned_output / source_path.name,
                     max_width=max_width,
                     max_height=max_height,
                 )
@@ -516,6 +554,7 @@ def quick_preflight_local(
             QuickDatasetPreflight(
                 dataset_name=dataset_name,
                 dataset_id=dataset_id,
+                image_container=image_container,
                 total_images=len(images),
                 samples=tuple(samples),
             )
@@ -582,9 +621,11 @@ def run_batch_downscale(
     jpeg_quality: int = 100,
     single_folder: bool = False,
     dataset_sources: Optional[Mapping[str, Path]] = None,
+    dataset_image_containers: Optional[Mapping[str, Optional[str]]] = None,
     direct_output_root: Optional[Path] = None,
     create_archive: bool = True,
     progress: Optional[Callable[[int, int, str], None]] = None,
+    stage: Optional[Callable[[str], None]] = None,
 ) -> BatchResult:
     """Sequentially process a clean batch and atomically publish final output."""
     preflight = preflight_batch(
@@ -597,8 +638,10 @@ def run_batch_downscale(
     )
     if preflight.corrupt_images:
         first = preflight.corrupt_images[0]
-        raise BatchDownscaleError(
-            f"Batch blocked by corrupt image: {first.relative_path}: {first.error}"
+        raise BatchPreflightError(
+            first.dataset_name,
+            first.relative_path,
+            first.error,
         )
     if single_folder and len(preflight.datasets) != 1:
         raise BatchDownscaleError("Single-folder mode requires exactly one dataset")
@@ -634,8 +677,18 @@ def run_batch_downscale(
         for index, dataset in enumerate(preflight.datasets, start=1):
             if progress:
                 progress(index, total, dataset.dataset_name)
-            dataset_output = (
+            dataset_output_root = (
                 staged_root if single_folder else staged_root / dataset.dataset_id
+            )
+            image_container = (
+                dataset_image_containers.get(dataset.dataset_id)
+                if dataset_image_containers is not None
+                else None
+            )
+            dataset_output = (
+                dataset_output_root / image_container
+                if image_container is not None
+                else dataset_output_root
             )
             dataset_input = (
                 dataset_sources[dataset.dataset_id]
@@ -649,6 +702,14 @@ def run_batch_downscale(
                 max_height=max_height,
                 jpeg_quality=jpeg_quality,
             )
+            if image_container is not None:
+                assert summary.manifest_path is not None
+                manifest_path = dataset_output_root / MANIFEST_FILENAME
+                if manifest_path.exists():
+                    raise BatchDownscaleError(
+                        f"Dataset manifest already exists: {dataset.dataset_name}"
+                    )
+                os.replace(summary.manifest_path, manifest_path)
             output_images = summary.resized_count + summary.unchanged_count
             if output_images != summary.image_count:
                 raise BatchDownscaleError(
@@ -668,6 +729,8 @@ def run_batch_downscale(
             )
 
         summary_path = staged_root / BATCH_SUMMARY_FILENAME
+        if stage:
+            stage("writing")
         _write_batch_summary(summary_path, results, max_width, max_height)
         if temp_archive is not None:
             _create_and_validate_zip(staged_root, temp_archive)

@@ -44,6 +44,7 @@ class ApiContractTests(unittest.TestCase):
         paths = app.openapi()["paths"]
         self.assertIn("/api/v1/image-downscale/preflight", paths)
         self.assertIn("/api/v1/image-downscale/local/preflight", paths)
+        self.assertIn("/api/v1/image-downscale/local/start", paths)
         self.assertIn("/api/v1/image-downscale/{job_id}/start", paths)
         self.assertIn("/api/v1/image-downscale/{job_id}/status", paths)
         self.assertIn("/api/v1/image-downscale/{job_id}/download/zip", paths)

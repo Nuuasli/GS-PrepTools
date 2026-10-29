@@ -36,6 +36,15 @@ class LocalPathPreflightRequest(BaseModel):
     samples_per_dataset: int = Field(default=2, ge=1)
 
 
+class LocalPathStartRequest(BaseModel):
+    """Trusted-localhost paths for immediate full preflight and processing."""
+
+    input_path: str = Field(min_length=1)
+    output_path: str = Field(min_length=1)
+    max_width: int = Field(default=1920, gt=0)
+    max_height: int = Field(default=1080, gt=0)
+
+
 async def _stream_upload(upload: UploadFile, destination: Path) -> None:
     """Copy one browser upload to disk without buffering the complete file."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -147,6 +156,21 @@ async def create_local_preflight(request: LocalPathPreflightRequest) -> dict:
             max_width=request.max_width,
             max_height=request.max_height,
             samples_per_dataset=request.samples_per_dataset,
+        )
+    except (BatchDownscaleError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return job.as_dict()
+
+
+@router.post("/local/start")
+async def start_local_full(request: LocalPathStartRequest) -> dict:
+    """Start full local validation and processing without requiring quick preview."""
+    try:
+        job = image_downscale_service.start_local_full(
+            input_path=request.input_path,
+            output_path=request.output_path,
+            max_width=request.max_width,
+            max_height=request.max_height,
         )
     except (BatchDownscaleError, OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

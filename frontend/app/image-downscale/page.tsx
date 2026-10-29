@@ -23,6 +23,7 @@ import {
   preflightImageDownscale,
   preflightLocalImageDownscale,
   startImageDownscale,
+  startLocalImageDownscale,
 } from "@/services/api";
 import type {
   DownscaleInputMode,
@@ -242,6 +243,42 @@ export default function ImageDownscalePage() {
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Batch downscale failed");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const startFullLocal = async () => {
+    if (
+      !localInputPath.trim() ||
+      !localOutputPath.trim() ||
+      maxWidth <= 0 ||
+      maxHeight <= 0
+    ) {
+      setError("Valid input path, output path, width, and height are required.");
+      return;
+    }
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await clearJob();
+      let status = await startLocalImageDownscale(
+        localInputPath.trim(),
+        localOutputPath.trim(),
+        maxWidth,
+        maxHeight
+      );
+      setJob(status);
+      while (status.status === "running") {
+        await wait(500);
+        status = await getImageDownscaleStatus(status.job_id);
+        setJob(status);
+      }
+      if (status.status !== "completed") {
+        throw new Error(status.error || "Full downscale failed");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Full downscale failed");
     } finally {
       setIsProcessing(false);
     }
@@ -474,7 +511,20 @@ export default function ImageDownscalePage() {
           </div>
         )}
 
-        {job && (
+        {job?.status === "failed" && job.corrupt_images.length > 0 && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+            <p className="mb-3 font-semibold text-destructive">Full preflight failed</p>
+            {job.corrupt_images.map((item) => (
+              <div key={item.relative_path} className="mb-2 text-sm last:mb-0">
+                <p className="font-medium text-destructive">{item.dataset_name}</p>
+                <p className="font-mono text-xs">{item.relative_path}</p>
+                <p className="text-destructive">{item.error}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {job && (job.input_mode !== "local" || job.validation_scope === "sample") && (
           <section className="glass-card p-6 space-y-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -635,9 +685,23 @@ export default function ImageDownscalePage() {
         {job?.status === "running" && (
           <section className="glass-card p-6 space-y-3">
             <div className="flex justify-between text-sm">
-              <span>{job.current_dataset ? `Processing ${job.current_dataset}` : "Preparing batch"}</span>
+              <span>
+                {job.phase === "validating"
+                  ? "Validating all images..."
+                  : job.phase === "writing"
+                    ? "Writing manifests..."
+                    : job.current_dataset
+                      ? `Processing dataset ${job.current_dataset_index}/${job.current_dataset_total}: ${job.current_dataset}`
+                      : "Preparing batch..."}
+              </span>
               <span>{Math.round(job.progress)}%</span>
             </div>
+            {job.input_mode === "local" && (
+              <div className="grid gap-1 text-xs text-muted-foreground">
+                <p className="break-all font-mono">Input: {job.input_path}</p>
+                <p className="break-all font-mono">Output: {job.output_path}</p>
+              </div>
+            )}
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
               <div
                 className="h-full bg-gradient-to-r from-primary to-accent transition-all"
@@ -659,20 +723,31 @@ export default function ImageDownscalePage() {
               </div>
             </div>
             {job.input_mode === "local" && (
-              <div className="rounded-lg border border-success/30 bg-success/10 p-4">
-                <p className="font-medium text-success">Direct filesystem output ready</p>
-                <p className="mt-1 break-all font-mono text-sm">{job.output_path}</p>
+              <div className="grid gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="font-medium text-success">Completed</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Input Path</p>
+                  <p className="break-all font-mono">{job.input_path}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Output Path</p>
+                  <p className="break-all font-mono">{job.output_path}</p>
+                </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  No ZIP download or extraction is required.
+                  Direct filesystem output is ready. No ZIP download or extraction is required.
                 </p>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {[
                 ["Datasets", job.result.datasets_processed],
                 ["Total Images", job.result.total_images],
                 ["Resized", job.result.resized],
                 ["Unchanged", job.result.unchanged],
+                ["Output", job.result.output],
                 ["Failed", job.result.failed],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg border border-border bg-secondary/30 p-3">
@@ -735,67 +810,108 @@ export default function ImageDownscalePage() {
           </section>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            disabled={
-              isBusy ||
-              (!selection && !job && !localInputPath && !localOutputPath)
-            }
-            onClick={() => void reset()}
-            className="flex h-13 items-center justify-center gap-2 rounded-xl border border-border bg-secondary font-semibold transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <RotateCcw className="h-5 w-5" /> Reset
-          </button>
-          {!job || job.status === "preflight_ready" || job.status === "preflight_blocked" ? (
-            job ? (
+        {inputMode === "local" ? (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
-                disabled={!job.can_process || isBusy}
-                onClick={() => void startBatch()}
-                className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                disabled={isBusy || (!job && !localInputPath && !localOutputPath)}
+                onClick={() => void reset()}
+                className="flex h-13 items-center justify-center gap-2 rounded-xl border border-border bg-secondary font-semibold transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
               >
-                {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-                {job.input_mode === "local"
-                  ? "Start Downscale (Full Preflight)"
-                  : "Start Batch Downscale"}
+                <RotateCcw className="h-5 w-5" /> Reset
               </button>
-            ) : (
               <button
                 type="button"
                 disabled={
                   isBusy ||
-                  (inputMode === "local"
-                    ? !localInputPath.trim() ||
-                      !localOutputPath.trim() ||
-                      !Number.isInteger(quickSamples) ||
-                      quickSamples < 1
-                    : !selection)
+                  !localInputPath.trim() ||
+                  !localOutputPath.trim() ||
+                  !Number.isInteger(quickSamples) ||
+                  quickSamples < 1 ||
+                  maxWidth <= 0 ||
+                  maxHeight <= 0
                 }
                 onClick={() => void runDryRun()}
+                className="flex h-13 items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {isPreflighting ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <SearchCheck className="h-5 w-5" />
+                )}
+                {isPreflighting ? "Inspecting samples..." : "Quick Dry Run"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isBusy ||
+                  !localInputPath.trim() ||
+                  !localOutputPath.trim() ||
+                  maxWidth <= 0 ||
+                  maxHeight <= 0
+                }
+                onClick={() => void startFullLocal()}
                 className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
               >
-                {isPreflighting ? <Loader2 className="h-5 w-5 animate-spin" /> : <SearchCheck className="h-5 w-5" />}
-                {isPreflighting
-                  ? inputMode === "local"
-                    ? "Inspecting samples..."
-                    : `Uploading ${uploadProgress}%`
-                  : inputMode === "local"
-                    ? "Run Quick Dry Run"
-                    : "Run Dry Run"}
+                {isProcessing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Play className="h-5 w-5" />
+                )}
+                Start Downscale (Full Preflight)
               </button>
-            )
-          ) : (
+            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              All images will be validated before processing.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
-              disabled
-              className="flex h-13 items-center justify-center gap-2 rounded-xl bg-secondary font-semibold opacity-50"
+              disabled={isBusy || (!selection && !job)}
+              onClick={() => void reset()}
+              className="flex h-13 items-center justify-center gap-2 rounded-xl border border-border bg-secondary font-semibold transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
             >
-              {isProcessing && <Loader2 className="h-5 w-5 animate-spin" />}
-              {job.status === "completed" ? "Completed" : "Processing batch"}
+              <RotateCcw className="h-5 w-5" /> Reset
             </button>
-          )}
-        </div>
+            {!job || job.status === "preflight_ready" || job.status === "preflight_blocked" ? (
+              job ? (
+                <button
+                  type="button"
+                  disabled={!job.can_process || isBusy}
+                  onClick={() => void startBatch()}
+                  className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <Play className="h-5 w-5" /> Start Batch Downscale
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isBusy || !selection}
+                  onClick={() => void runDryRun()}
+                  className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  {isPreflighting ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <SearchCheck className="h-5 w-5" />
+                  )}
+                  {isPreflighting ? `Uploading ${uploadProgress}%` : "Run Dry Run"}
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="flex h-13 items-center justify-center gap-2 rounded-xl bg-secondary font-semibold opacity-50"
+              >
+                {job.status === "completed" ? "Completed" : "Processing batch"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </main>
   );

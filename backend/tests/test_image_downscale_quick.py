@@ -40,6 +40,31 @@ class QuickDryRunTests(unittest.TestCase):
             self.assertEqual(quick.total_sampled, 2)
             self.assertFalse(output_root.exists())
 
+    def test_377_images_container_samples_exactly_first_and_last(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_root = root / "input"
+            output_root = root / "output"
+            for index in range(5, 382):
+                write_image(
+                    input_root / "Ganesha" / "images" / f"IMG_{index:06d}.png"
+                )
+
+            layout = inspect_local_dataset_root(str(input_root), str(output_root))
+            quick = quick_preflight_local(layout)
+
+            self.assertEqual(layout.dataset_names, {"Ganesha": "Ganesha"})
+            self.assertEqual(layout.dataset_image_containers, {"Ganesha": "images"})
+            dataset = quick.datasets[0]
+            self.assertEqual(dataset.total_images, 377)
+            self.assertEqual(dataset.sampled_count, 2)
+            self.assertEqual(
+                [sample.filename for sample in dataset.samples],
+                ["IMG_000005.png", "IMG_000381.png"],
+            )
+            self.assertEqual(quick.total_sampled, 2)
+            self.assertFalse(output_root.exists())
+
     def test_small_datasets_and_large_sample_count_inspect_all(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

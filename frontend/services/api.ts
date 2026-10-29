@@ -229,6 +229,24 @@ export async function preflightLocalImageDownscale(
   });
 }
 
+export async function startLocalImageDownscale(
+  inputPath: string,
+  outputPath: string,
+  maxWidth: number,
+  maxHeight: number
+): Promise<DownscaleJobResponse> {
+  return apiFetch<DownscaleJobResponse>("/image-downscale/local/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input_path: inputPath,
+      output_path: outputPath,
+      max_width: maxWidth,
+      max_height: maxHeight,
+    }),
+  });
+}
+
 export async function startImageDownscale(
   jobId: string
 ): Promise<DownscaleJobResponse> {

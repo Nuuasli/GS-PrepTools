@@ -278,8 +278,11 @@ export interface DownscaleJobResponse {
   input_path?: string | null;
   output_path?: string | null;
   status: DownscaleJobStatus;
+  phase?: "ready" | "validating" | "processing" | "writing" | "completed" | "failed";
   progress: number;
   current_dataset?: string | null;
+  current_dataset_index?: number | null;
+  current_dataset_total?: number | null;
   dataset_count: number;
   total_images: number;
   total_resize: number;

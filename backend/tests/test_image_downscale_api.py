@@ -11,9 +11,11 @@ from fastapi import HTTPException, UploadFile
 
 from app.api.v1.image_downscale import (
     LocalPathPreflightRequest,
+    LocalPathStartRequest,
     create_local_preflight,
     create_preflight,
     start_batch,
+    start_local_full,
 )
 from app.core.config import settings
 from app.services.image_downscale import image_downscale_service
@@ -230,7 +232,121 @@ class ImageDownscaleApiTests(unittest.TestCase):
             time.sleep(0.02)
         self.assertEqual(job.status, "failed")
         self.assertIn("IMG_000002.jpg", job.error or "")
+        failed_payload = job.as_dict()
+        self.assertEqual(failed_payload["phase"], "failed")
+        self.assertEqual(
+            failed_payload["corrupt_images"][0]["relative_path"],
+            "Tualen/IMG_000002.jpg",
+        )
+        self.assertTrue(failed_payload["corrupt_images"][0]["error"])
         self.assertFalse(output_root.exists())
+
+    def test_direct_full_local_start_processes_all_377_images_without_quick(self) -> None:
+        input_root = Path(self.temp_dir.name) / "full_input"
+        output_root = Path(self.temp_dir.name) / "full_output"
+        dataset = input_root / "Ganesha"
+        dataset.mkdir(parents=True)
+        image = np.zeros((8, 8, 3), dtype=np.uint8)
+        for index in range(377):
+            self.assertTrue(
+                cv2.imwrite(str(dataset / f"IMG_{index:06d}.png"), image)
+            )
+
+        response = asyncio.run(
+            start_local_full(
+                LocalPathStartRequest(
+                    input_path=str(input_root),
+                    output_path=str(output_root),
+                    max_width=1920,
+                    max_height=1080,
+                )
+            )
+        )
+        job_id = response["job_id"]
+        self.job_ids.append(job_id)
+        self.assertEqual(response["status"], "running")
+        self.assertEqual(response["phase"], "validating")
+        self.assertEqual(response["validation_scope"], "full")
+        self.assertIsNone(response["samples_per_dataset"])
+        self.assertIsNone(response["total_sampled"])
+        self.assertEqual(response["total_images"], 377)
+
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            job = image_downscale_service.get_job(job_id)
+            assert job is not None
+            if job.status != "running":
+                break
+            time.sleep(0.02)
+
+        self.assertEqual(job.status, "completed", job.error)
+        completed = job.as_dict()
+        self.assertEqual(completed["phase"], "completed")
+        self.assertEqual(completed["validation_scope"], "full")
+        self.assertEqual(completed["result"]["total_images"], 377)
+        self.assertEqual(completed["result"]["output"], 377)
+        self.assertEqual(completed["result"]["failed"], 0)
+        output_images = [
+            path
+            for path in (output_root / "Ganesha").iterdir()
+            if path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        ]
+        self.assertEqual(len(output_images), 377)
+        self.assertTrue((output_root / "Ganesha" / "downscale_manifest.csv").is_file())
+        self.assertTrue((output_root / "batch_downscale_summary.csv").is_file())
+
+    def test_direct_full_local_start_rejects_invalid_input_path(self) -> None:
+        missing_input = Path(self.temp_dir.name) / "missing_input"
+        output_root = Path(self.temp_dir.name) / "unused_output"
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(
+                start_local_full(
+                    LocalPathStartRequest(
+                        input_path=str(missing_input),
+                        output_path=str(output_root),
+                    )
+                )
+            )
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("does not exist", str(raised.exception.detail))
+        self.assertFalse(output_root.exists())
+
+    def test_direct_full_local_start_preserves_images_container(self) -> None:
+        input_root = Path(self.temp_dir.name) / "nested_input"
+        output_root = Path(self.temp_dir.name) / "nested_output"
+        image = np.zeros((36, 64, 3), dtype=np.uint8)
+        source = input_root / "Tualen" / "images" / "IMG_000001.png"
+        source.parent.mkdir(parents=True)
+        self.assertTrue(cv2.imwrite(str(source), image))
+
+        response = asyncio.run(
+            start_local_full(
+                LocalPathStartRequest(
+                    input_path=str(input_root),
+                    output_path=str(output_root),
+                )
+            )
+        )
+        job_id = response["job_id"]
+        self.job_ids.append(job_id)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            job = image_downscale_service.get_job(job_id)
+            assert job is not None
+            if job.status != "running":
+                break
+            time.sleep(0.02)
+
+        self.assertEqual(job.status, "completed", job.error)
+        self.assertTrue(
+            (output_root / "Tualen" / "images" / source.name).is_file()
+        )
+        self.assertTrue(
+            (output_root / "Tualen" / "downscale_manifest.csv").is_file()
+        )
+        self.assertFalse(
+            (output_root / "Tualen" / "images" / "downscale_manifest.csv").exists()
+        )
 
 
 if __name__ == "__main__":

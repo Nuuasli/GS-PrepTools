@@ -13,6 +13,7 @@ from typing import Any, Optional
 from app.core.config import settings
 from tools.image_downscale.batch import (
     BatchDownscaleError,
+    BatchPreflightError,
     BatchPreflight,
     BatchResult,
     QuickBatchPreflight,
@@ -22,6 +23,7 @@ from tools.image_downscale.batch import (
     run_batch_downscale,
     sanitize_component,
 )
+from tools.image_downscale.runner import SUPPORTED_EXTENSIONS
 
 
 @dataclass
@@ -33,15 +35,21 @@ class ImageDownscaleJob:
     workspace_dir: Path
     dataset_names: dict[str, str]
     dataset_sources: Optional[dict[str, Path]]
+    dataset_image_containers: Optional[dict[str, Optional[str]]]
     ignored_files: tuple[str, ...]
     max_width: int
     max_height: int
     preflight: Optional[BatchPreflight] = None
     quick_preflight: Optional[QuickBatchPreflight] = None
+    local_image_counts: Optional[dict[str, int]] = None
     output_path: Optional[Path] = None
     status: str = "preflight_ready"
+    phase: str = "ready"
     progress: float = 0.0
     current_dataset: Optional[str] = None
+    current_dataset_index: Optional[int] = None
+    current_dataset_total: Optional[int] = None
+    full_errors: list[dict[str, str]] = field(default_factory=list)
     error: Optional[str] = None
     result: Optional[BatchResult] = None
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -53,8 +61,7 @@ class ImageDownscaleJob:
     def as_dict(self) -> dict[str, Any]:
         with self.lock:
             result = self.result
-            if self.input_mode == "local":
-                assert self.quick_preflight is not None
+            if self.input_mode == "local" and self.quick_preflight is not None:
                 quick = self.quick_preflight
                 datasets = [
                     {
@@ -91,17 +98,50 @@ class ImageDownscaleJob:
                     {
                         "dataset_name": dataset.dataset_name,
                         "dataset_id": dataset.dataset_id,
-                        "relative_path": f"{dataset.dataset_name}/{sample.filename}",
+                        "relative_path": "/".join(
+                            part
+                            for part in (
+                                dataset.dataset_name,
+                                dataset.image_container,
+                                sample.filename,
+                            )
+                            if part is not None
+                        ),
                         "error": sample.error,
                     }
                     for dataset in quick.datasets
                     for sample in dataset.samples
                     if sample.error is not None
                 ]
+                corrupt_images.extend(self.full_errors)
                 can_process = not corrupt_images
                 validation_scope = "sample"
                 samples_per_dataset: Optional[int] = quick.samples_per_dataset
                 total_sampled: Optional[int] = quick.total_sampled
+            elif self.input_mode == "local":
+                assert self.local_image_counts is not None
+                datasets = [
+                    {
+                        "dataset_name": self.dataset_names[dataset_id],
+                        "dataset_id": dataset_id,
+                        "images": self.local_image_counts[dataset_id],
+                        "resize": 0,
+                        "unchanged": 0,
+                        "corrupt": 0,
+                    }
+                    for dataset_id in sorted(
+                        self.dataset_names, key=str.casefold
+                    )
+                ]
+                dataset_count = len(datasets)
+                total_images = sum(self.local_image_counts.values())
+                total_resize = 0
+                total_unchanged = 0
+                corrupt_images = list(self.full_errors)
+                can_process = self.status != "failed"
+                validation_scope = "full"
+                samples_per_dataset = None
+                total_sampled = None
             else:
                 assert self.preflight is not None
                 full = self.preflight
@@ -140,8 +180,11 @@ class ImageDownscaleJob:
                 "input_path": str(self.source_root) if self.input_mode == "local" else None,
                 "output_path": str(self.output_path) if self.output_path else None,
                 "status": self.status,
+                "phase": self.phase,
                 "progress": self.progress,
                 "current_dataset": self.current_dataset,
+                "current_dataset_index": self.current_dataset_index,
+                "current_dataset_total": self.current_dataset_total,
                 "dataset_count": dataset_count,
                 "total_images": total_images,
                 "total_resize": total_resize,
@@ -153,7 +196,7 @@ class ImageDownscaleJob:
                 "samples_per_dataset": samples_per_dataset,
                 "total_sampled": total_sampled,
                 "full_preflight_pending": self.input_mode == "local"
-                and self.status in {"preflight_ready", "preflight_blocked"},
+                and self.phase in {"ready", "validating"},
                 "max_width": self.max_width,
                 "max_height": self.max_height,
                 "datasets": datasets,
@@ -236,6 +279,7 @@ class ImageDownscaleService:
             workspace_dir=source_root.parent,
             dataset_names=dict(dataset_names),
             dataset_sources=None,
+            dataset_image_containers=None,
             ignored_files=tuple(ignored_files),
             max_width=max_width,
             max_height=max_height,
@@ -277,6 +321,7 @@ class ImageDownscaleService:
             workspace_dir=workspace_dir,
             dataset_names=dict(layout.dataset_names),
             dataset_sources=dict(layout.dataset_sources),
+            dataset_image_containers=dict(layout.dataset_image_containers),
             ignored_files=layout.ignored_files,
             max_width=max_width,
             max_height=max_height,
@@ -286,6 +331,47 @@ class ImageDownscaleService:
         )
         with self._lock:
             self._jobs[job_id] = job
+        return job
+
+    def start_local_full(
+        self,
+        *,
+        input_path: str,
+        output_path: str,
+        max_width: int,
+        max_height: int,
+    ) -> ImageDownscaleJob:
+        """Create and immediately start a full local-path job, without quick preview."""
+        layout = inspect_local_dataset_root(input_path, output_path)
+        job_id = uuid.uuid4().hex
+        image_counts = {
+            dataset_id: sum(
+                1
+                for path in source_dir.iterdir()
+                if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+            )
+            for dataset_id, source_dir in layout.dataset_sources.items()
+        }
+        job = ImageDownscaleJob(
+            job_id=job_id,
+            root_name=layout.input_root.name,
+            input_mode="local",
+            source_root=layout.input_root,
+            workspace_dir=self.storage_root / job_id,
+            dataset_names=dict(layout.dataset_names),
+            dataset_sources=dict(layout.dataset_sources),
+            dataset_image_containers=dict(layout.dataset_image_containers),
+            ignored_files=layout.ignored_files,
+            max_width=max_width,
+            max_height=max_height,
+            local_image_counts=image_counts,
+            output_path=layout.output_root,
+            status="running",
+            phase="validating",
+        )
+        with self._lock:
+            self._jobs[job_id] = job
+        self._executor.submit(self._run, job)
         return job
 
     def get_job(self, job_id: str) -> Optional[ImageDownscaleJob]:
@@ -318,6 +404,7 @@ class ImageDownscaleService:
             if job.status != "preflight_ready":
                 raise BatchDownscaleError(f"Job cannot start from status {job.status}")
             job.status = "running"
+            job.phase = "validating"
             job.progress = 0.0
         self._executor.submit(self._run, job)
         return job
@@ -325,8 +412,17 @@ class ImageDownscaleService:
     def _run(self, job: ImageDownscaleJob) -> None:
         def update_progress(index: int, total: int, dataset_name: str) -> None:
             with job.lock:
+                job.phase = "processing"
                 job.current_dataset = dataset_name
-                job.progress = round(((index - 1) / total) * 100, 2)
+                job.current_dataset_index = index
+                job.current_dataset_total = total
+                job.progress = round((index / total) * 90, 2)
+
+        def update_stage(phase: str) -> None:
+            with job.lock:
+                job.phase = phase
+                if phase == "writing":
+                    job.progress = 95.0
 
         try:
             if job.input_mode == "local":
@@ -339,9 +435,11 @@ class ImageDownscaleService:
                     max_width=job.max_width,
                     max_height=job.max_height,
                     dataset_sources=job.dataset_sources,
+                    dataset_image_containers=job.dataset_image_containers,
                     direct_output_root=job.output_path,
                     create_archive=False,
                     progress=update_progress,
+                    stage=update_stage,
                 )
             else:
                 result = run_batch_downscale(
@@ -353,16 +451,28 @@ class ImageDownscaleService:
                     max_height=job.max_height,
                     single_folder=job.input_mode == "single",
                     progress=update_progress,
+                    stage=update_stage,
                 )
         except Exception as exc:  # worker boundary: persist a visible failure
             with job.lock:
                 job.status = "failed"
+                job.phase = "failed"
                 job.error = str(exc)
+                if isinstance(exc, BatchPreflightError):
+                    job.full_errors = [
+                        {
+                            "dataset_name": exc.dataset_name,
+                            "dataset_id": sanitize_component(exc.dataset_name),
+                            "relative_path": exc.relative_path,
+                            "error": exc.image_error,
+                        }
+                    ]
                 job.current_dataset = None
             return
         with job.lock:
             job.result = result
             job.status = "completed"
+            job.phase = "completed"
             job.progress = 100.0
             job.current_dataset = None
 

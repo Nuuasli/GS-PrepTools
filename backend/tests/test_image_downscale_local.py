@@ -107,6 +107,106 @@ class ImageDownscaleLocalPathTests(unittest.TestCase):
                 },
             )
 
+    def test_images_container_layout_preserves_dataset_identity_and_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_root = root / "DATA_PATUNG"
+            output_root = root / "DATA_PATUNG_1080p"
+            sources = {
+                "Ganesha/images/IMG_000001.jpg": (3840, 2160),
+                "Ganesha/images/IMG_000002.png": (1280, 720),
+                "Siwa/images/IMG_000001.jpg": (1600, 900),
+            }
+            for relative, dimensions in sources.items():
+                write_image(input_root / relative, *dimensions)
+            source_bytes = {
+                relative: (input_root / relative).read_bytes()
+                for relative in sources
+            }
+
+            layout = inspect_local_dataset_root(str(input_root), str(output_root))
+            self.assertEqual(
+                layout.dataset_names,
+                {"Ganesha": "Ganesha", "Siwa": "Siwa"},
+            )
+            self.assertEqual(
+                layout.dataset_image_containers,
+                {"Ganesha": "images", "Siwa": "images"},
+            )
+            self.assertEqual(layout.dataset_sources["Ganesha"].name, "images")
+
+            preflight = preflight_batch(
+                layout.input_root,
+                layout.dataset_names,
+                root_name=layout.input_root.name,
+                dataset_sources=layout.dataset_sources,
+            )
+            self.assertEqual(preflight.total_images, 3)
+            self.assertEqual(preflight.total_resize, 1)
+
+            result = run_batch_downscale(
+                layout.input_root,
+                layout.output_root.parent,
+                layout.dataset_names,
+                root_name=layout.input_root.name,
+                dataset_sources=layout.dataset_sources,
+                dataset_image_containers=layout.dataset_image_containers,
+                direct_output_root=layout.output_root,
+                create_archive=False,
+            )
+
+            self.assertEqual(result.output_images, 3)
+            self.assertEqual(
+                cv2.imread(
+                    str(output_root / "Ganesha" / "images" / "IMG_000001.jpg")
+                ).shape[1::-1],
+                (1920, 1080),
+            )
+            for dataset in ("Ganesha", "Siwa"):
+                self.assertTrue(
+                    (output_root / dataset / "images" / "IMG_000001.jpg").is_file()
+                )
+                self.assertTrue(
+                    (output_root / dataset / "downscale_manifest.csv").is_file()
+                )
+                self.assertFalse(
+                    (output_root / dataset / "images" / "downscale_manifest.csv").exists()
+                )
+            self.assertFalse((output_root / "Ganesha" / "IMG_000001.jpg").exists())
+            self.assertEqual(
+                (output_root / "Ganesha" / "images" / "IMG_000002.png").read_bytes(),
+                source_bytes["Ganesha/images/IMG_000002.png"],
+            )
+            self.assertEqual(
+                source_bytes,
+                {
+                    relative: (input_root / relative).read_bytes()
+                    for relative in sources
+                },
+            )
+
+    def test_mixed_and_deep_nested_layouts_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mixed_input = root / "mixed"
+            write_image(mixed_input / "Ganesha" / "direct.jpg", 32, 18)
+            write_image(mixed_input / "Ganesha" / "images" / "nested.jpg", 32, 18)
+            with self.assertRaisesRegex(BatchDownscaleError, "Ambiguous dataset layout"):
+                inspect_local_dataset_root(
+                    str(mixed_input), str(root / "mixed_output")
+                )
+
+            deep_input = root / "deep"
+            write_image(
+                deep_input / "Ganesha" / "a" / "b" / "images" / "deep.jpg",
+                32,
+                18,
+            )
+            with self.assertRaisesRegex(BatchDownscaleError, "Unsupported nested"):
+                inspect_local_dataset_root(
+                    str(deep_input), str(root / "deep_output")
+                )
+
     def test_unsafe_or_unavailable_local_paths_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
