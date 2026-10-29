@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # Limits
     max_upload_size_mb: int = Field(
-        2048, validation_alias="GSPREP_MAX_UPLOAD_SIZE_MB"
+        3072, ge=1, validation_alias="GSPREP_MAX_UPLOAD_SIZE_MB"
     )
 
     # Job lifecycle

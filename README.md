@@ -133,6 +133,11 @@ npm run dev
 
 Job metadata disimpan sebagai JSON kecil agar status dan hasil tetap dapat dipulihkan setelah restart. Secara default, video asli dan folder intermediate dihapus setelah ZIP, PDF, manifest CSV, dan preview berhasil dibuat. Job selesai kedaluwarsa setelah 24 jam dan dibersihkan otomatis.
 
+Maximum upload size adalah **3072 MB (~3 GB)**, dikendalikan oleh
+`GSPREP_MAX_UPLOAD_SIZE_MB`. Backend menerima upload secara streaming dalam
+chunk 1 MB dan menulisnya langsung ke disk, sehingga file multi-GB tidak dibaca
+seluruhnya ke RAM aplikasi sekaligus.
+
 ### Manifest Per-Frame
 
 Setiap completed job menghasilkan `{video_name}_manifest.csv` yang dapat diunduh terpisah dan juga disertakan sebagai `{video_name}/manifest.csv` di dalam ZIP dataset. Manifest tetap tersedia meskipun `Keep Intermediates` tidak diaktifkan.
@@ -342,6 +347,31 @@ Sebelum menjalankan analisis, gunakan panduan penelitian berikut:
 Candidate sampling yang reproducible tersedia melalui
 `python -m tools.calibration_sampling`. Output default bersifat blind dan tidak
 menampilkan score algoritma. Utility ini terpisah dari runtime aplikasi.
+
+### Standalone image downscale
+
+Folder image hasil ekstraksi dapat diturunkan resolusinya secara terpisah tanpa
+menjalankan ulang pipeline menggunakan `python -m tools.image_downscale`.
+Utility ini memakai bounding box default `1920x1080`, mempertahankan aspect
+ratio, tidak crop, tidak upscale, tidak menimpa source, serta menghasilkan
+`downscale_manifest.csv`. Panduan lengkap tersedia di
+[`backend/tools/image_downscale/README.md`](backend/tools/image_downscale/README.md).
+
+Web UI di `/image-downscale` mendukung satu folder image maupun satu dataset
+root dengan beberapa subfolder patung. Directory upload mempertahankan relative
+path, dry run memeriksa semua dataset, corrupt image memblokir batch, dan output
+ZIP mempertahankan folder per patung beserta manifest per dataset serta
+`batch_downscale_summary.csv`. Untuk perilaku deterministic, image yang berada
+lebih dalam dari `root/dataset/image` ditolak dan tidak pernah di-flatten.
+
+Untuk dataset besar pada mesin yang menjalankan backend, mode **Local Path**
+menerima input/output filesystem path dan memprosesnya langsung tanpa browser
+upload atau ekstraksi ZIP. Mode ini ditujukan hanya untuk trusted localhost;
+source tetap read-only dan output existing ditolak.
+
+Preview Local Path memakai Quick Dry Run deterministic (default dua sample per
+dataset: first/last). Ini hanya preview resolusi; Start Downscale selalu
+menjalankan full preflight seluruh image sebelum membuat output.
 
 Untuk menyiapkan package pilot blur, SSIM, dan ORB sekaligus setelah path data
 calibration tersedia, gunakan `python -m tools.pilot_labeling`. Perintah ini

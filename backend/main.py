@@ -18,6 +18,7 @@ from app.core.logging import logger
 from app.api.v1.health import router as health_router
 from app.api.v1.upload import router as upload_router
 from app.api.v1.pipeline import router as pipeline_router
+from app.api.v1.image_downscale import router as image_downscale_router
 
 
 @asynccontextmanager
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(upload_router, prefix="/api/v1")
     app.include_router(pipeline_router, prefix="/api/v1")
+    app.include_router(image_downscale_router, prefix="/api/v1")
 
     return app
 

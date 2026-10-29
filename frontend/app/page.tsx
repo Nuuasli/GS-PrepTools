@@ -9,8 +9,9 @@
  * 3. Start the processing pipeline
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Upload,
   Play,
@@ -19,9 +20,10 @@ import {
   Film,
   Sparkles,
   Loader2,
+  ImageDown,
 } from "lucide-react";
 import { usePipelineStore } from "@/hooks/use-pipeline-store";
-import { deleteJob, uploadVideo } from "@/services/api";
+import { deleteJob, getHealthStatus, uploadVideo } from "@/services/api";
 import { DuplicateMethod, RESIZE_OPTIONS } from "@/types";
 
 export default function HomePage() {
@@ -46,8 +48,45 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [maxUploadSizeMb, setMaxUploadSizeMb] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getHealthStatus()
+      .then((health) => {
+        if (!cancelled) setMaxUploadSizeMb(health.max_upload_size_mb);
+      })
+      .catch(() => {
+        // Upload validation retries the request and reports a visible error.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const uploadFileInstantly = async (file: File) => {
+    let uploadLimitMb = maxUploadSizeMb;
+    if (uploadLimitMb === null) {
+      try {
+        const health = await getHealthStatus();
+        uploadLimitMb = health.max_upload_size_mb;
+        setMaxUploadSizeMb(uploadLimitMb);
+      } catch {
+        setError("Unable to verify the maximum upload size. Check the backend connection.");
+        return;
+      }
+    }
+
+    const maximumBytes = uploadLimitMb * 1024 * 1024;
+    if (file.size > maximumBytes) {
+      setError(`Maximum upload size is ${uploadLimitMb} MB.`);
+      const fileInput = document.getElementById("file-input") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
+      return;
+    }
+
     setIsUploading(true);
     setJobId(null);
     setVideoMetadata(null);
@@ -201,6 +240,13 @@ export default function HomePage() {
           <p className="text-muted-foreground text-lg">
             Gaussian Splatting Dataset Preparation Tool
           </p>
+          <Link
+            href="/image-downscale"
+            className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+          >
+            <ImageDown className="h-4 w-4" />
+            Open Image Downscale
+          </Link>
         </div>
 
         {/* Upload Zone */}
@@ -250,6 +296,12 @@ export default function HomePage() {
               </>
             )}
           </div>
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            Maximum file size: {maxUploadSizeMb === null
+              ? "loading..."
+              : `${maxUploadSizeMb} MB (~${maxUploadSizeMb / 1024} GB)`}
+          </p>
 
           {videoFile && uploadProgress < 100 && uploadProgress > 0 && (
             <div className="mt-4">

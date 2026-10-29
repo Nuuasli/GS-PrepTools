@@ -40,6 +40,16 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class HealthResponse(BaseModel):
+    """Runtime status and public upload constraints."""
+
+    status: str
+    app_name: str
+    version: str
+    environment: str
+    max_upload_size_mb: int
+
+
 class DuplicateMethod(str, Enum):
     """Duplicate detection algorithm selection."""
     ORB = "orb"

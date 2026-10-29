@@ -40,6 +40,7 @@ export interface HealthResponse {
   app_name: string;
   version: string;
   environment: string;
+  max_upload_size_mb: number;
 }
 
 export interface VideoMetadata {
@@ -206,4 +207,93 @@ export interface ProcessingResult {
   dataset_url: string;
   manifest_url?: string | null;
   preview_images: string[];
+}
+
+// ========================
+// Standalone Image Downscale
+// ========================
+
+export type DownscaleInputMode = "single" | "root" | "local";
+export type DownscaleJobStatus =
+  | "preflight_ready"
+  | "preflight_blocked"
+  | "running"
+  | "completed"
+  | "failed";
+
+export interface DownscaleDatasetPreflight {
+  dataset_name: string;
+  dataset_id: string;
+  images: number;
+  resize: number;
+  unchanged: number;
+  corrupt: number;
+  sampled?: number;
+  sample_errors?: number;
+  samples?: DownscaleSamplePlan[];
+}
+
+export interface DownscaleSamplePlan {
+  filename: string;
+  source_width?: number | null;
+  source_height?: number | null;
+  output_width?: number | null;
+  output_height?: number | null;
+  action: "resize" | "resized" | "unchanged" | "error";
+  error?: string | null;
+}
+
+export interface DownscaleCorruptImage {
+  dataset_name: string;
+  dataset_id: string;
+  relative_path: string;
+  error: string;
+}
+
+export interface DownscaleDatasetResult {
+  dataset_name: string;
+  dataset_id: string;
+  input: number;
+  resized: number;
+  unchanged: number;
+  output: number;
+  failed: number;
+  status: string;
+}
+
+export interface DownscaleBatchResult {
+  datasets_processed: number;
+  total_images: number;
+  resized: number;
+  unchanged: number;
+  output: number;
+  failed: number;
+  datasets: DownscaleDatasetResult[];
+}
+
+export interface DownscaleJobResponse {
+  job_id: string;
+  root_folder: string;
+  input_mode: DownscaleInputMode;
+  input_path?: string | null;
+  output_path?: string | null;
+  status: DownscaleJobStatus;
+  progress: number;
+  current_dataset?: string | null;
+  dataset_count: number;
+  total_images: number;
+  total_resize: number;
+  total_unchanged: number;
+  corrupt_images: DownscaleCorruptImage[];
+  ignored_files: string[];
+  can_process: boolean;
+  validation_scope?: "sample" | "full";
+  samples_per_dataset?: number | null;
+  total_sampled?: number | null;
+  full_preflight_pending?: boolean;
+  max_width: number;
+  max_height: number;
+  datasets: DownscaleDatasetPreflight[];
+  error?: string | null;
+  result?: DownscaleBatchResult | null;
 }
