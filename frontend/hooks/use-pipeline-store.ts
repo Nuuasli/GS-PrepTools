@@ -59,14 +59,14 @@ interface PipelineState {
 const DEFAULT_CONFIG: ProcessingConfig = {
   extraction_fps: 2,
   jpeg_quality: 100,
-  blur_threshold: 10,
-  duplicate_threshold: 0.5,
+  blur_threshold: 75,
+  duplicate_threshold: 0.98,
   resize_width: 0,
   duplicate_method: "orb" as DuplicateMethod,
   keep_intermediates: true,
 };
 
-const PERSIST_VERSION = 2;
+const PERSIST_VERSION = 3;
 
 const createInitialSteps = (): StepProgress[] => [
   { step: "upload" as PipelineStep, status: "pending" as StepStatus, progress: 0, message: "Waiting..." },

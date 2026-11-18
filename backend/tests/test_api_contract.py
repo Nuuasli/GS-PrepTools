@@ -17,12 +17,14 @@ class ApiContractTests(unittest.TestCase):
         config = ProcessingConfig()
 
         self.assertEqual(config.extraction_fps, 2)
-        self.assertEqual(config.blur_threshold, 10.0)
-        self.assertEqual(config.duplicate_threshold, 0.5)
+        self.assertEqual(config.blur_threshold, 75.0)
+        self.assertEqual(config.duplicate_threshold, 0.98)
         self.assertEqual(config.jpeg_quality, 100)
         self.assertEqual(config.duplicate_method, DuplicateMethod.ORB)
         self.assertEqual(config.resize_width, 0)
         self.assertTrue(config.keep_intermediates)
+        self.assertEqual(settings.default_blur_threshold, 75.0)
+        self.assertEqual(settings.default_duplicate_threshold, 0.98)
 
     def test_manifest_download_and_result_schema_are_exposed(self) -> None:
         openapi = app.openapi()

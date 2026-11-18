@@ -157,8 +157,8 @@ class ProcessingConfig(BaseModel):
     """Configuration options provided by the user for the pipeline."""
     extraction_fps: int = Field(default=2, ge=1, le=30)
     jpeg_quality: int = Field(default=100, ge=50, le=100)
-    blur_threshold: float = Field(default=10.0, ge=10.0, le=500.0)
-    duplicate_threshold: float = Field(default=0.5, ge=0.5, le=0.99)
+    blur_threshold: float = Field(default=75.0, ge=10.0, le=500.0)
+    duplicate_threshold: float = Field(default=0.98, ge=0.5, le=0.99)
     duplicate_method: DuplicateMethod = Field(default=DuplicateMethod.ORB)
     resize_width: int = Field(default=0, ge=0, le=7680)
     keep_intermediates: bool = True

@@ -55,10 +55,10 @@ class Settings(BaseSettings):
         100, validation_alias="GSPREP_DEFAULT_JPEG_QUALITY"
     )
     default_blur_threshold: float = Field(
-        10.0, validation_alias="GSPREP_DEFAULT_BLUR_THRESHOLD"
+        75.0, validation_alias="GSPREP_DEFAULT_BLUR_THRESHOLD"
     )
     default_duplicate_threshold: float = Field(
-        0.5, validation_alias="GSPREP_DEFAULT_DUPLICATE_THRESHOLD"
+        0.98, validation_alias="GSPREP_DEFAULT_DUPLICATE_THRESHOLD"
     )
     default_resize_width: int = Field(
         0, validation_alias="GSPREP_DEFAULT_RESIZE_WIDTH"
