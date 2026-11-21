@@ -16,7 +16,6 @@ import {
   Download,
   FileText,
   RotateCcw,
-  Sparkles,
   Check,
   Trash2,
   Layers,
@@ -24,6 +23,7 @@ import {
   Loader2,
   FileSpreadsheet,
 } from "lucide-react";
+import { PageHeading } from "@/components/page-heading";
 import { usePipelineStore } from "@/hooks/use-pipeline-store";
 import {
   getDatasetDownloadUrl,
@@ -85,7 +85,7 @@ export default function ResultPage() {
 
   if (!hasHydrated || (jobId && !result)) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <main className="flex min-h-[calc(100vh-76px)] items-center justify-center">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
           Restoring job result...
@@ -120,20 +120,19 @@ export default function ResultPage() {
   };
 
   return (
-    <main className="flex-1 flex justify-center p-6">
-      <div className="w-full max-w-3xl space-y-8 animate-fade-in">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <div className="flex items-center justify-center gap-3">
-            <Sparkles className="w-8 h-8 text-success" />
-            <h1 className="text-3xl font-bold tracking-tight">
-              Dataset Ready
-            </h1>
-          </div>
-          <p className="text-muted-foreground">
-            Your dataset has been successfully prepared.
-          </p>
-        </div>
+    <main className="workspace-page">
+      <div className="workspace-content max-w-5xl space-y-7 animate-fade-in">
+        <PageHeading
+          label="Pipeline complete"
+          title="The curated dataset is ready."
+          description="Review the preparation summary, inspect representative frames, and export the dataset with its report and manifest."
+          action={
+            <span className="status-pill text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              Completed
+            </span>
+          }
+        />
 
         {/* Video Information */}
         <div className="glass-card p-5 space-y-3">
@@ -241,10 +240,7 @@ export default function ResultPage() {
           <a
             href={getDatasetDownloadUrl(jobId)}
             download
-            className="flex-1 h-12 rounded-xl font-semibold transition-all duration-300
-              bg-gradient-to-r from-primary to-accent text-primary-foreground
-              hover:shadow-lg hover:shadow-primary/25
-              flex items-center justify-center gap-2"
+            className="primary-action flex-1 h-12"
           >
             <Download className="w-5 h-5" />
             Download Dataset
@@ -254,10 +250,7 @@ export default function ResultPage() {
             download
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 h-12 rounded-xl font-semibold transition-all duration-300
-              bg-secondary text-secondary-foreground border border-border
-              hover:bg-muted
-              flex items-center justify-center gap-2"
+            className="secondary-action flex-1 h-12"
           >
             <FileText className="w-5 h-5" />
             Download Report
@@ -266,10 +259,7 @@ export default function ResultPage() {
             <a
               href={getManifestDownloadUrl(jobId)}
               download
-              className="flex-1 h-12 rounded-xl font-semibold transition-all duration-300
-                bg-secondary text-secondary-foreground border border-border
-                hover:bg-muted
-                flex items-center justify-center gap-2"
+              className="secondary-action flex-1 h-12"
             >
               <FileSpreadsheet className="w-5 h-5" />
               Download Manifest

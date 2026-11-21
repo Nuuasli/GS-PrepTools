@@ -1,13 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { ChangeEvent, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   CheckCircle2,
   Download,
   FolderOpen,
-  ImageDown,
   Loader2,
   Play,
   RotateCcw,
@@ -285,27 +282,21 @@ export default function ImageDownscalePage() {
   };
 
   return (
-    <main className="flex-1 p-6 sm:p-10">
-      <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <main className="workspace-page">
+      <div className="workspace-content space-y-6 animate-fade-in">
+        <div className="page-heading">
           <div>
-            <Link
-              href="/"
-              className="mb-3 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" /> Back to Video Preparation
-            </Link>
             <div className="flex items-center gap-3">
-              <ImageDown className="h-8 w-8 text-primary" />
               <div>
-                <h1 className="text-3xl font-bold">Image Downscale</h1>
-                <p className="text-muted-foreground">
-                  Standalone post-processing for already extracted images
+                <p className="page-heading-label">Standalone image utility</p>
+                <h1>Downscale extracted images safely.</h1>
+                <p className="page-heading-description">
+                  Prepare a bounded-resolution image folder while preserving aspect ratio, filenames, and every original source file.
                 </p>
               </div>
             </div>
           </div>
-          <div className="rounded-full border border-success/30 bg-success/10 px-4 py-2 text-xs font-medium text-success">
+          <div className="status-pill text-success">
             Preserve aspect ratio · No upscale
           </div>
         </div>
@@ -704,7 +695,7 @@ export default function ImageDownscalePage() {
             )}
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="h-full bg-gradient-to-r from-primary to-accent transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${job.progress}%` }}
               />
             </div>
@@ -795,7 +786,7 @@ export default function ImageDownscalePage() {
               {job.input_mode !== "local" && (
                 <a
                   href={getImageDownscaleZipUrl(job.job_id)}
-                  className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground"
+                  className="primary-action h-12"
                 >
                   <Download className="h-5 w-5" /> Download All as ZIP
                 </a>
@@ -852,7 +843,7 @@ export default function ImageDownscalePage() {
                   maxHeight <= 0
                 }
                 onClick={() => void startFullLocal()}
-                className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                className="primary-action h-13 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {isProcessing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -882,7 +873,7 @@ export default function ImageDownscalePage() {
                   type="button"
                   disabled={!job.can_process || isBusy}
                   onClick={() => void startBatch()}
-                  className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                  className="primary-action h-13 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   <Play className="h-5 w-5" /> Start Batch Downscale
                 </button>
@@ -891,7 +882,7 @@ export default function ImageDownscalePage() {
                   type="button"
                   disabled={isBusy || !selection}
                   onClick={() => void runDryRun()}
-                  className="flex h-13 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-accent font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                  className="primary-action h-13 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {isPreflighting ? (
                     <Loader2 className="h-5 w-5 animate-spin" />

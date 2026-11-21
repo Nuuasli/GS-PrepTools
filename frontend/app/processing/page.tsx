@@ -27,8 +27,8 @@ import {
   Loader2,
   XCircle,
   Clock,
-  Sparkles,
 } from "lucide-react";
+import { PageHeading } from "@/components/page-heading";
 import { usePipelineStore } from "@/hooks/use-pipeline-store";
 import { startPipeline, getPipelineProgress } from "@/services/api";
 import type { PipelineStep, StepStatus, StepProgress } from "@/types";
@@ -48,7 +48,7 @@ const STEP_META: Record<
 function StatusIcon({ status }: { status: StepStatus }) {
   switch (status) {
     case "completed":
-      return <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
+      return <CheckCircle2 className="w-4 h-4 text-success shrink-0" />;
     case "running":
       return <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />;
     case "failed":
@@ -268,29 +268,20 @@ export default function ProcessingPage() {
   const activeMeta = activeTask ? STEP_META[activeTask.id] : null;
 
   return (
-    <main className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden">
-      {/* Ambient background glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-primary/10 rounded-full blur-[140px] pointer-events-none" />
-
+    <main className="workspace-page relative overflow-hidden">
       {/* ========================================================
           CENTER HERO: Overall Progress Display
          ======================================================== */}
-      <div className="w-full max-w-xl text-center space-y-6 z-10 animate-fade-in">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold tracking-wide uppercase">
-            <Sparkles className="w-3.5 h-3.5" />
-            GS-Prep Processing Engine
-          </div>
-          <h1 className="text-4xl font-extrabold tracking-tight">
-            Processing Dataset
-          </h1>
-          <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Please wait while your video is being processed...
-          </p>
-        </div>
+      <div className="workspace-content max-w-3xl space-y-6 animate-fade-in">
+        <PageHeading
+          label="Active pipeline"
+          title="Processing the dataset."
+          description="Each preparation stage runs in sequence. This page updates automatically while the backend validates and writes the curated dataset."
+          action={<span className="status-pill">{overallProgress}% complete</span>}
+        />
 
         {/* Clean Overall Progress Card */}
-        <div className="glass-card p-6 space-y-4 shadow-2xl relative border border-border/80">
+        <div className="glass-card p-6 space-y-4 relative border border-border/80">
           {/* Header Row: Overall Progress label on left, 57% on right */}
           <div className="flex items-center justify-between text-sm font-semibold">
             <span className="text-muted-foreground tracking-wide">
@@ -304,7 +295,7 @@ export default function ProcessingPage() {
           {/* Smooth Linear Progress Bar */}
           <div className="h-3 bg-secondary/80 rounded-full overflow-hidden p-0.5 border border-border/50">
             <div
-              className="h-full bg-gradient-to-r from-primary via-accent to-indigo-400 rounded-full transition-all duration-500 ease-out shadow-[0_0_12px_rgba(99,102,241,0.4)]"
+              className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
               style={{ width: `${overallProgress}%` }}
             />
           </div>
@@ -357,7 +348,7 @@ export default function ProcessingPage() {
           BOTTOM-RIGHT PIPELINE TASK FEED (Strictly Max 2 Tasks)
           Powered by Framer Motion AnimatePresence & Spring Layout
          ======================================================== */}
-      <div className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 space-y-2.5 pointer-events-auto flex flex-col justify-end">
+      <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] max-w-96 space-y-2.5 pointer-events-auto flex flex-col justify-end sm:bottom-6 sm:right-6">
         <AnimatePresence mode="popLayout" initial={false}>
           {displayTasks.map(({ id, role, stepData }) => {
             const meta = STEP_META[id] || { label: id, icon: Clock };
@@ -383,19 +374,19 @@ export default function ProcessingPage() {
                   damping: 28,
                   mass: 0.8,
                 }}
-                className={`p-3.5 rounded-xl backdrop-blur-xl border shadow-xl transition-colors duration-300 ${
+                className={`p-3.5 rounded-xl border bg-card shadow-sm transition-colors duration-300 ${
                   isCompleted
-                    ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
+                    ? "border-success/30 text-success"
                     : isFailed
-                    ? "bg-red-950/30 border-red-500/40 text-red-300"
-                    : "bg-card/95 border-primary/50 text-foreground shadow-primary/10"
+                    ? "border-destructive/40 text-destructive"
+                    : "border-primary/40 text-foreground"
                 }`}
               >
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <Icon
                     className={`w-4 h-4 ${
                       isCompleted
-                        ? "text-emerald-400"
+                        ? "text-success"
                         : "text-primary shrink-0"
                     }`}
                   />
@@ -410,10 +401,10 @@ export default function ProcessingPage() {
                   <motion.div
                     className={`h-full rounded-full ${
                       isCompleted
-                        ? "bg-emerald-400"
+                        ? "bg-success"
                         : isFailed
                         ? "bg-destructive"
-                        : "bg-gradient-to-r from-primary to-accent"
+                        : "bg-primary"
                     }`}
                     initial={{ width: 0 }}
                     animate={{ width: `${stepData.progress}%` }}

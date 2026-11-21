@@ -11,17 +11,15 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   Upload,
   Play,
   X,
   Settings2,
   Film,
-  Sparkles,
   Loader2,
-  ImageDown,
 } from "lucide-react";
+import { PageHeading } from "@/components/page-heading";
 import { usePipelineStore } from "@/hooks/use-pipeline-store";
 import { deleteJob, getHealthStatus, uploadVideo } from "@/services/api";
 import { DuplicateMethod, RESIZE_OPTIONS } from "@/types";
@@ -227,33 +225,25 @@ export default function HomePage() {
   };
 
   return (
-    <main className="flex-1 flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl space-y-8 animate-fade-in">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <div className="flex items-center justify-center gap-3">
-            <Sparkles className="w-8 h-8 text-primary" />
-            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              GS-Prep
-            </h1>
-          </div>
-          <p className="text-muted-foreground text-lg">
-            Gaussian Splatting Dataset Preparation Tool
-          </p>
-          <Link
-            href="/image-downscale"
-            className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
-          >
-            <ImageDown className="h-4 w-4" />
-            Open Image Downscale
-          </Link>
-        </div>
+    <main className="workspace-page">
+      <div className="workspace-content space-y-7 animate-fade-in">
+        <PageHeading
+          label="Dataset preparation"
+          title="Prepare video frames for reconstruction."
+          description="Upload a source video, inspect its technical metadata, and configure a reproducible extraction pipeline for a curated image dataset."
+          action={
+            <span className="status-pill">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Video to curated photos
+            </span>
+          }
+        />
 
         {/* Upload Zone */}
         <div
           className={`glass-card p-8 transition-all duration-300 cursor-pointer ${
             isDragging
-              ? "border-primary/60 animate-pulse-glow"
+              ? "border-primary/60 bg-[color:var(--soft-accent)] animate-pulse-glow"
               : "hover:border-primary/30"
           }`}
           onDragOver={handleDragOver}
@@ -307,7 +297,7 @@ export default function HomePage() {
             <div className="mt-4">
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-300"
+                  className="h-full bg-primary rounded-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -619,10 +609,10 @@ export default function HomePage() {
               isCancelling
             }
             onClick={handleCancel}
-            className="h-14 rounded-xl border border-border bg-secondary text-lg font-semibold text-foreground
-              transition-all duration-300 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive
+            className="secondary-action h-14 text-base
+              hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive
               disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:border-border disabled:hover:bg-secondary disabled:hover:text-foreground
-              flex items-center justify-center gap-3"
+              gap-3"
           >
             {isCancelling ? (
               <>
@@ -648,11 +638,8 @@ export default function HomePage() {
               !jobId
             }
             onClick={handleProcess}
-            className="h-14 rounded-xl text-lg font-semibold transition-all duration-300
-              bg-gradient-to-r from-primary to-accent text-primary-foreground
-              hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.01]
-              disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none
-              flex items-center justify-center gap-3"
+            className="primary-action h-14 text-base
+              disabled:opacity-20 disabled:cursor-not-allowed gap-3"
           >
             {isProcessing ? (
               <>
