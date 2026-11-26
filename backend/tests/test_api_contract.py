@@ -1,6 +1,8 @@
 import asyncio
 import unittest
 
+from pydantic import ValidationError
+
 from app.api.v1.health import health_check
 from app.core.config import settings
 from app.models.schemas import DuplicateMethod, ProcessingConfig
@@ -25,6 +27,27 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(config.keep_intermediates)
         self.assertEqual(settings.default_blur_threshold, 75.0)
         self.assertEqual(settings.default_duplicate_threshold, 0.98)
+
+    def test_duplicate_payload_preserves_method_and_decimal_threshold(self) -> None:
+        for method in ("ssim", "orb"):
+            with self.subTest(method=method):
+                config = ProcessingConfig.model_validate(
+                    {
+                        "duplicate_threshold": 0.98,
+                        "duplicate_method": method,
+                    }
+                )
+
+                self.assertEqual(config.duplicate_threshold, 0.98)
+                self.assertEqual(config.duplicate_method.value, method)
+
+        with self.assertRaises(ValidationError):
+            ProcessingConfig.model_validate(
+                {
+                    "duplicate_threshold": "0,98",
+                    "duplicate_method": "ssim",
+                }
+            )
 
     def test_manifest_download_and_result_schema_are_exposed(self) -> None:
         openapi = app.openapi()
