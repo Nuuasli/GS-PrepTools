@@ -26,6 +26,7 @@ build/
 # ----- Storage (working files) -----
 backend/storage/uploads/*
 backend/storage/jobs/*
+backend/storage/lidar/
 !backend/storage/uploads/.gitkeep
 !backend/storage/jobs/.gitkeep
 

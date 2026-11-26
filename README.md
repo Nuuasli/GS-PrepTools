@@ -120,6 +120,49 @@ npm run dev
 
 ---
 
+### 3. Menjalankan LiDAR Cropper web (opsional)
+
+Dari folder `backend`, jalankan setelah dependensi backend utama terpasang.
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-lidar.txt
+.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+Jalankan frontend seperti biasa dan buka **LiDAR Cropper** di sidebar atau kunjungi
+`http://localhost:3000/lidar-cropper`. Pilih PLY, LAS, atau LAZ, isi XYZ atau klik
+**Pick Center**, lalu pilih sphere atau cylinder. Untuk cylinder, **Height** dibagi
+merata di kedua sisi pusat pada sumbu vertikal yang dipilih. Jarak memakai satuan
+sumber. Viewer memerlukan WebGL2 dan menampilkan sampel hingga 250.000 titik.
+**Preview Crop** menghitung seleksi pada sampel. Ekspor memeriksa seluruh record.
+Gunakan **Download Selection JSON** untuk replay melalui **Load Selection JSON**
+setelah membuka file dengan SHA-256 yang sama.
+
+PLY point cloud dan Gaussian PLY diekspor ke PLY dengan semua properti vertex
+scalar. Mesh dan PLY dengan elemen tambahan ditolak agar atribut tidak hilang.
+PLY ASCII dibatasi 32 MiB. Gunakan PLY biner untuk file besar. LAS dan LAZ dapat
+diekspor sebagai LAS/LAZ dengan koordinat, urutan, scale, offset, dan atribut asli.
+Ekspor LAS/LAZ ke PLY turunan memerlukan konfirmasi dan hanya tersedia jika
+atributnya kompatibel. Header dan CRS asli dicatat dalam JSON karena PLY tidak
+memiliki struktur header LAS.
+
+Browser mengirim file langsung ke FastAPI menggunakan `NEXT_PUBLIC_API_URL`.
+Batas byte memakai `GSPREP_MAX_UPLOAD_SIZE_MB` (default 3.072 MiB). Ukuran record
+LAZ setelah didekompresi dibatasi empat kali batas tersebut. Sesi sementara
+memakai folder privat `backend/storage/lidar` dengan TTL yang ada. Satu proses
+Uvicorn mengelola sesi, progres, dan pembatalan dalam memori. Restart
+mengakhiri sesi. Upload yang terputus bisa diulang dari awal.
+
+API LiDAR ada di `/api/v1/lidar` dan tersedia setelah paket core lokal
+terpasang. Paket ini memakai core desktop tanpa PySide6, PyVista, atau VTK.
+Jalankan server di loopback untuk penggunaan lokal. Token sesi membatasi akses
+ke upload dan hasilnya. URL unduhan memiliki masa berlaku lima menit.
+
+Uji API dengan `python -m pytest tests/test_lidar_api.py` dari `backend`.
+Untuk uji browser, jalankan kedua aplikasi secara lokal dan gunakan Chrome
+dengan Playwright tersedia sebagai paket lokal, lalu dari `frontend` jalankan
+`node tests/lidar-browser.mjs`.
+
 ## ⚙️ Parameter Konfigurasi
 
 | Parameter | Default | Rekomendasi Penggunaan |

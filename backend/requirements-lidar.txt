@@ -1,0 +1,2 @@
+# From backend/: python -m pip install -r requirements-lidar.txt
+-e ../desktop_tools/lidar_point_cropper

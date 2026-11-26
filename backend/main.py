@@ -19,6 +19,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.upload import router as upload_router
 from app.api.v1.pipeline import router as pipeline_router
 from app.api.v1.image_downscale import router as image_downscale_router
+from app.api.v1.lidar import router as lidar_router
 
 
 @asynccontextmanager
@@ -37,6 +38,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.services.pipeline import pipeline_service
 
+    try:
+        from app.services.lidar import LidarService
+    except ModuleNotFoundError as exc:
+        if exc.name != "lidar_cropper":
+            raise
+        lidar_service = None
+    else:
+        lidar_service = LidarService(settings.jobs_path.parent / "lidar")
+    app.state.lidar_service = lidar_service
+
     restored = pipeline_service.restore_jobs()
     if restored > 0:
         logger.info("Restored %d job metadata records", restored)
@@ -51,6 +62,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             purged_count = pipeline_service.cleanup_expired_jobs()
             if purged_count > 0:
                 logger.info("Housekeeping: purged %d expired jobs", purged_count)
+            if lidar_service:
+                await asyncio.to_thread(lidar_service.cleanup)
 
     housekeeping_task = asyncio.create_task(housekeeping_loop())
 
@@ -61,6 +74,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         housekeeping_task.cancel()
         with suppress(asyncio.CancelledError):
             await housekeeping_task
+        if lidar_service:
+            await asyncio.to_thread(lidar_service.close)
         logger.info("Shutting down %s", settings.app_name)
 
 
@@ -97,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(upload_router, prefix="/api/v1")
     app.include_router(pipeline_router, prefix="/api/v1")
     app.include_router(image_downscale_router, prefix="/api/v1")
+    app.include_router(lidar_router, prefix="/api/v1")
 
     return app
 

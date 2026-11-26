@@ -2,16 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Film, ImageDown, Layers3, Menu, X } from "lucide-react";
+import { Box, Film, ImageDown, Layers3, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { href: "/", label: "Video Processing", icon: Film },
   { href: "/image-downscale", label: "Image Downscale", icon: ImageDown },
+  { href: "/lidar-cropper", label: "LiDAR Cropper", icon: Box },
 ];
 
 const routeContext: Record<string, { title: string; context: string }> = {
+  "/lidar-cropper": {
+    title: "LiDAR Cropper",
+    context: "Inspect and crop point clouds in source coordinates",
+  },
   "/": {
     title: "Video Processing",
     context: "Prepare curated image datasets from source video",
